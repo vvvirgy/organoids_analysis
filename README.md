@@ -1,3 +1,3 @@
-# organoids_analysis
+# Organoids analysis
 
 Analysis of scRNA, WGS and bulk proteomics data from organoids
