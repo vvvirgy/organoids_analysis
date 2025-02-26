@@ -44,6 +44,25 @@ drivers_to_check = drivers %>%
 drivers_to_check_correct_samples = drivers_to_check %>% 
   filter(PDO %in% new_mapping_experiment$fixed_name %>% unique)
 
+drivers_not_mutated = read.table("cnas_important_genes.csv", sep = ",", header = T)
+drivers_not_mutated = drivers_not_mutated %>% 
+  dplyr::mutate(gene = case_when(chr == "chr17" ~ "TP53", 
+                                 chr == "chr5" ~ "APC",
+                                 chr == "chr3" ~ "PIK3CA", 
+                                 chr == "chr12" ~ "KRAS")) %>% 
+  dplyr::mutate(from = NULL, X = NULL, to = NULL)
+
+drivers_to_check_correct_samples = full_join(drivers_to_check_correct_samples, drivers_not_mutated, by = join_by("chr" == "chr", 
+                                                                              "gene" == "gene", 
+                                                                              "PDO" == "sample", 
+                                                                              "Major" == "Major", 
+                                                                              "minor" == "minor"))
+
+drivers_to_check_correct_samples = drivers_to_check_correct_samples %>% 
+  dplyr::mutate(karyotype = ifelse(is.na(karyotype), paste(Major, minor, sep = ":"), karyotype)) %>% 
+  dplyr::mutate(multiplicity = ifelse(is.na(multiplicity), 0, multiplicity)) %>% 
+  dplyr::mutate(Consequence = ifelse(multiplicity == 0, "not mutated", Consequence))
+
 # add the mapping to the proteomics ids
 # new_names_data = dplyr::full_join(drivers_to_check, mapping, by = join_by("PDO" == "fixed_name"))
 
@@ -72,27 +91,49 @@ samples_check = new_mapping_experiment %>%
   distinct
 
 x = drivers_to_check_correct_samples %>%
-  select(gene, karyotype, PDO) %>% 
+  select(gene, karyotype, PDO, multiplicity, Consequence) %>% 
+  # mutate(state = paste0(karyotype, "-", multiplicity)) %>% 
   distinct(.keep_all = F) %>% 
   left_join(., samples_check, by = join_by("PDO" == "fixed_name")) %>% 
   # filter(!is.na(gene)) %>% 
   full_join(., proteomic_genes, by = join_by("proteomics_code" == "PDO", "gene" == "gene_name")) %>% 
-  mutate(karyotype = ifelse(is.na(karyotype), "no alteration", karyotype))
+  # mutate(state = ifelse(is.na(state), "no alteration known", state)) %>% 
+  # mutate(multiplicity = ifelse(is.na(multiplicity), 0, multiplicity)) %>% 
+  # mutate(karyotype = ifelse(is.na(karyotype), "no alteration", karyotype))
+  dplyr::filter(!is.na(proteomics_code))
 
 
 # first visualization
-
 x = x %>% 
-  mutate(karyotype = factor(karyotype, 
-                            levels = c("no alteration", "1:1", "1:0", "2:0", "2:1", "2:2", "3:0", "3:1", "3:2", "3:3", "4:0", "5:0")))
+  mutate(karyotype = factor(karyotype,
+                            levels = c("1:0", "1:1", "2:0", "2:1", "3:0", "2:2", "3:1", "4:0","3:2", "5:0", "3:3"))) %>% 
+  mutate(multiplicity = factor(multiplicity, levels = 0:5))
+
+# cna_colors = setNames(nm = x$karyotype %>% levels, object = c("gainsboro", "#BBE2EC", yarrr::piratepal(palette = "basel")))
+
+with_mult = x %>% 
+  ggplot(aes(x = karyotype, y = mean_expr, color = multiplicity, fill = Consequence)) + 
+  geom_boxplot(outliers = F, alpha = 0.7) +
+  # geom_point() +
+  facet_wrap(~gene, scales = "free") + 
+  geom_jitter(alpha = 0.6, size = 0.5, color = "black") +
+  theme_bw() + 
+  scale_color_brewer(palette = "Dark2") +
+  ggtitle("using multiplicity") + 
+  theme(legend.position = "bottom")
+  # scale_fill_manual(values = cna_colors)
 
 cna_colors = setNames(nm = x$karyotype %>% levels, object = c("gainsboro", "#BBE2EC", yarrr::piratepal(palette = "basel")))
 
-x %>% 
+without_mult = x %>% 
   ggplot(aes(x = karyotype, y = mean_expr, fill = karyotype)) + 
-  geom_boxplot(outliers = F) + 
+  geom_boxplot(outliers = F, alpha = 0.8) +
+  # geom_point() +
   facet_wrap(vars(gene), scales = "free") + 
-  geom_jitter() + 
+  geom_jitter(alpha = 0.6, size = 0.5) +
   theme_bw() + 
-  scale_fill_manual(values = cna_colors)
+  # scale_color_brewer(palette = "Dark2")
+  scale_fill_manual(values = cna_colors) + 
+  ggtitle("without multiplicity, karyotype vs expression proteins") + 
+  theme(legend.position = "bottom")
 
