@@ -109,19 +109,36 @@ x = x %>%
                             levels = c("1:0", "1:1", "2:0", "2:1", "3:0", "2:2", "3:1", "4:0","3:2", "5:0", "3:3"))) %>% 
   mutate(multiplicity = factor(multiplicity, levels = 0:5))
 
+multihit_identifiers = x %>% 
+  group_by(gene, karyotype, PDO, multiplicity) %>% 
+  count
+
+x = full_join(x, multihit_identifiers, by = join_by("gene" == "gene", "karyotype" == 'karyotype', "PDO" == 'PDO', 'multiplicity' == 'multiplicity'))
+x = x %>% 
+  dplyr::mutate(Consequence = ifelse(n > 1, "multihit", Consequence)) %>% 
+  arrange(desc(n)) %>% 
+  distinct() %>% 
+  separate(Consequence, into = "Consequence", sep = "&") %>% 
+  mutate(Consequence = case_when(Consequence %in% c("frameshift_variant","inframe_deletion") ~ "frame_alteration", 
+                                 .default = Consequence))
+  
+
 # cna_colors = setNames(nm = x$karyotype %>% levels, object = c("gainsboro", "#BBE2EC", yarrr::piratepal(palette = "basel")))
 
 with_mult = x %>% 
   ggplot(aes(x = karyotype, y = mean_expr, color = multiplicity, fill = Consequence)) + 
-  geom_boxplot(outliers = F, alpha = 0.7) +
+  geom_boxplot(outliers = F) +
   # geom_point() +
   facet_wrap(~gene, scales = "free") + 
-  geom_jitter(alpha = 0.6, size = 0.5, color = "black") +
+  # geom_jitter(alpha = 0.6, size = 0.5, color = "black") +
   theme_bw() + 
   scale_color_brewer(palette = "Dark2") +
+  scale_fill_viridis_d(option = 'magma') +
   ggtitle("using multiplicity") + 
   theme(legend.position = "bottom")
   # scale_fill_manual(values = cna_colors)
+
+with_mult
 
 cna_colors = setNames(nm = x$karyotype %>% levels, object = c("gainsboro", "#BBE2EC", yarrr::piratepal(palette = "basel")))
 
