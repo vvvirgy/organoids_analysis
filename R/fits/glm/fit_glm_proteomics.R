@@ -31,18 +31,19 @@ all_genes = intersect(unique(proteogenomics_data$hgnc_symbol), unique(transcript
 proteogenomics_data = proteogenomics_data %>% 
   dplyr::filter(hgnc_symbol %in% all_genes) %>% 
   dplyr::mutate(mutation_status = ifelse(is_mutated == TRUE, 'Mutated', 'Wild-type')) %>% 
-  dplyr::mutate(mutation_status = factor(mutation_status, levels = c('Wild-type', 'Mutated'))) 
+  dplyr::mutate(mutation_status = factor(mutation_status, levels = c('Wild-type', 'Mutated'))) %>% 
+  dplyr::mutate(tot_cna = factor(tot_cna))
 
 # prepare the function - per gene!
 
 # perform cross validation
 set.seed(176613)
-# fit_model_full = glm_fit(proteogenomics_data,
-#               response = 'mean_intensity',
-#               model = as.formula('~ tot_cna + mutation_status'), 
-#               alphas = 0)
-# 
-# saveRDS(fit_model_full, 'data/glm_fit_ridge_proteomics.rds')
+fit_model_full = glm_fit(proteogenomics_data,
+              response = 'mean_intensity',
+              model = as.formula('~ tot_cna + mutation_status'),
+              alphas = 0)
+
+saveRDS(fit_model_full, 'data/glm_fit_ridge_proteomics.rds')
 
 fit_model_single = glm_fit(proteogenomics_data,
               response = 'mean_intensity',
