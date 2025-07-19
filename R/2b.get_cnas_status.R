@@ -1,3 +1,4 @@
+.libPaths()
 library(tidyverse)
 library(CNAqc)
 # source('~/Desktop/lade_scratch/CDSlab/brca_cro_prj/BRCA_CRO/new_analysis/functions/CNA/get_cna_status_region_specific.R')
@@ -6,6 +7,11 @@ source('/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj/organoids_analysis/
 
 setwd('/orfeo/scratch/cdslab/vgazziero/organoids_prj')
 cnas = readRDS('data/cnaqc/cnas_list.rds')
+# cnas = lapply(cnas, function(x) {CNAqc::wt_mutant_alleles(x)})
+cnas = lapply(cnas, function(x) {CNAqc::compute_CCF(x, method = 'ROUGH')})
+saveRDS(cnas, 'data/cnaqc/cnas_list_rough_ccf.rds')
+
+cnas = readRDS('data/cnaqc/cnas_list_rough_ccf.rds')
 
 # CNAqc::plot_multisample_CNA(cnas)
 # ggsave('res/all_organoids_cna_cohort.png')
@@ -36,7 +42,7 @@ genes_karyo = lapply(names(cnas), function(x) {
   dplyr::bind_rows()
 
 # saveRDS(genes_karyo, '~/Desktop/cdslab_scratch/organoids_prj/data/karyotypes_all_genes.rds')
-saveRDS(genes_karyo, '/orfeo/scratch/cdslab/vgazziero/organoids_prj/data/karyotypes_all_genes_qc.rds')
+saveRDS(genes_karyo, '/orfeo/scratch/cdslab/vgazziero/organoids_prj/data/karyotypes_all_genes_qc_v2.rds')
 # usa solo informazione del karyotype
 
 # include mutation types

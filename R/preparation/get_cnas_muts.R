@@ -6,10 +6,26 @@ extract_mutational_status = function(x, #cnaqc obj
                                      genes_pos # dataframe or list of genes
 ) {
   
-  muts = relative_to_abs_coords(Mutations(x), x$reference_genome)
+  # muts = relative_to_abs_coords(CNAqc::Mutations(x), x$reference_genome)
+  muts = CNAqc::Mutations(x)
+  ccfs = CNAqc::CCF(x) %>% 
+    dplyr::select(chr, from, to, ref, alt, VAF, VEP.SYMBOL, CCF, mutation_multiplicity)
+  
+  muts = full_join(muts, ccfs, 
+                   by = join_by('chr' == 'chr', 
+                                'from' == 'from', 
+                                'to' == 'to', 
+                                'ref' == 'ref',
+                                'alt' == 'alt', 
+                                'VAF' == 'VAF',  
+                                'VEP.SYMBOL' == 'VEP.SYMBOL'))
+  
+  # convert in absolute coordinates
+  muts = relative_to_abs_coords(muts, x$reference_genome)
+  
   cna_sample = karyotypes %>% 
     dplyr::filter(sample == x$sample) %>% 
-    tidyr::separate(segment_id, sep = ':', into = c('.chr', 'segment_from', 'segment_to'), convert = TRUE) %>% 
+    # tidyr::separate(segment_id, sep = ':', into = c('.chr', 'segment_from', 'segment_to'), convert = TRUE) %>% 
     dplyr::mutate(.chr = NULL) %>% 
     tidyr::separate(karyotype, into = c('Major', 'minor'), sep = ':',  convert = TRUE) %>% 
     dplyr::rename(from_gene = from) %>%
@@ -17,7 +33,7 @@ extract_mutational_status = function(x, #cnaqc obj
     # dplyr::mutate(from = NULL, to = NULL)
   
   muts = muts %>%  
-    dplyr::select(chr, from, to, ref, alt, NV, DP, VAF, VEP.SYMBOL, VEP.Consequence, driver_label, is_driver, segment_id, QC_PASS, karyotype) %>% 
+    dplyr::select(chr, from, to, ref, alt, NV, DP, VAF, VEP.SYMBOL, VEP.Consequence, VEP.IMPACT, driver_label, is_driver, segment_id, QC_PASS, karyotype, mutation_multiplicity, CCF) %>% 
     tidyr::separate(karyotype, into = c('Major', 'minor'), sep = ':',  convert = TRUE) %>% 
     dplyr::filter(VEP.SYMBOL != '.') %>% 
     tidyr::separate(segment_id, into = c('.chr', 'segment_from', 'segment_to'), sep = ':', convert = TRUE) %>% 
@@ -28,7 +44,7 @@ extract_mutational_status = function(x, #cnaqc obj
     dplyr::filter(VEP.SYMBOL %in% unique(genes_pos)) %>% 
     dplyr::rename(from = segment_from) %>% 
     dplyr::rename(to = segment_to) %>% 
-    relative_to_abs_coords(., x$reference_genome) %>% 
+    relative_to_abs_coords(., x$reference_genome) %>%
     dplyr::rename(segment_from = from) %>% 
     dplyr::rename(segment_to = to) %>% 
     dplyr::mutate(sample = x$sample)

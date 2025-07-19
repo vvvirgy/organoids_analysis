@@ -1,5 +1,6 @@
 glm_fit_multiresponse = function(data, 
                    response, 
+                   nobs = 5, 
                    model = as.formula('~ tot_cna + mutation_status'), 
                    alphas = seq(0, 1, 0.1), 
                    lambda
@@ -14,8 +15,9 @@ glm_fit_multiresponse = function(data,
     
     # remove those genes with too little observations
     
-    if(nrow(df) > 20) {
-      
+    if(nrow(df) < nobs) {
+      print(paste0('Less than ', nobs, ' observations, discarding gene')) 
+    } else {
       mod_mat = model.matrix(model, df)[,-1, drop = FALSE]
       response_variable = df %>%
         dplyr::select(all_of(response)) %>% 
@@ -33,7 +35,9 @@ glm_fit_multiresponse = function(data,
                                       family = "mgaussian",
                                       # nfolds = 4, 
                                       alpha = as.numeric(a))  }
-                  , error = function(e) {NA})
+                  , error = function(e) {
+                    NA
+                  })
         
       })
       

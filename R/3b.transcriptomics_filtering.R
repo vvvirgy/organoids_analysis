@@ -17,12 +17,12 @@ new_mapping_experiment = readRDS("data/mapping_samples.rds")
 all_samples_dict = full_join(matching_samples, new_mapping_experiment, 
                              by = join_by('genomics_code' == 'genomics_code', 
                                           'fixed_name' == 'fixed_name'), na_matches = 'na')
-saveRDS(all_samples_dict, 'data/samples_names_dictionary.rds')
+# saveRDS(all_samples_dict, 'data/samples_names_dictionary.rds')
 
 normalized_res = readRDS('data/normalized_res_pseudobulk.rds')
 
 # genes_cna_status = readRDS('data/karyotypes_full_cohort_cgs.rds')
-genes_cna_status = readRDS('data/karyotypes_mutations_all_genes_qc.rds')
+genes_cna_status = readRDS('data/karyotypes_mutations_all_genes_qc_ccf.rds')
 genes_to_check = genes_cna_status$hgnc_symbol %>% unique
 
 # filter genes that are highly fragmented and remove multi-ploidy genes
@@ -39,8 +39,11 @@ genes_cna_status = genes_cna_status %>%
 drivers_to_check_correct_samples = filter_fragmented_cnas(genes_cna_status, 
                                                           samples_list = (matching_samples$fixed_name %>% unique), 
                                                           genes_to_check = genes_to_check, 
+                                                          genes_position = genes, 
                                                           min_length = 10^6, 
                                                           strategy = 'MOv')
+drivers_to_check_correct_samples = drivers_to_check_correct_samples %>% 
+  mutate(mutation_multiplicity = ifelse(mut_consequence == 'wild-type', 0, mutation_multiplicity))
 
 # Filter the data to keep only selected genes and prepare the names to be correct 
 expression_genes = normalized_res %>%
@@ -54,7 +57,7 @@ expression_genes = normalized_res %>%
 # dplyr::rename(replicate = variable)
 
 transcriptomics_data = drivers_to_check_correct_samples %>%
-  dplyr::select(chr, hgnc_symbol, karyotype, sample, is_mutated, mut_consequence, driver_label, CGC_role_COAD, CGC_role_PANCANCER, is_driver_intogen) %>% 
+  dplyr::select(chr, hgnc_symbol, karyotype, sample, is_mutated, mut_consequence, driver_label, CGC_role_COAD, CGC_role_PANCANCER, is_driver_intogen, mutation_multiplicity, VEP.IMPACT) %>% 
   distinct(.keep_all = F) %>% 
   # add correct sample names to map genomics and proteomics
   left_join(., samples_check, by = join_by("sample" == "fixed_name")) %>% 
@@ -70,6 +73,7 @@ transcriptomics_data = drivers_to_check_correct_samples %>%
   dplyr::mutate(karyotype = paste(Major, minor, sep = ':'))
 
 saveRDS(transcriptomics_data, 'data/transcriptomics_data_all_genes.rds')
+
 
 transcriptomics_data %>% 
   dplyr::filter(hgnc_symbol == 'KRAS') %>% 
