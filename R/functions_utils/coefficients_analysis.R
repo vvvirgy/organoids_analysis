@@ -21,22 +21,27 @@ get_groups_coefficients = function(genes_by_function, coefficients_all) {
 }
 
 plot_heatmap_coefficients = function(coeffs_by_function, 
-                                     ann
+                                     ann 
+                                     # ht_col
                                      ) {
   
   heatmaps = lapply(coeffs_by_function %>% names, function(x) {
     mat = coeffs_by_function[[x]]
     if(nrow(mat) > 0) {
       
-      colors = circlize::colorRamp2(c(0,max(mat)+0.2), c('snow', 'dodgerblue4'))
-      
+      # colors = circlize::colorRamp2(c(min(mat)-0.2, 0, max(mat)+0.2), c('springgreen4', 'snow', 'dodgerblue4'))
+      ht_colors = colorRamp2(c(min(mat)-0.1,0,max(mat)+0.1), c('blue', 'snow', 'red'))
       ht = Heatmap(mat, 
-                   col = colors, 
+                   col = ht_colors,
                    bottom_annotation = ann, 
                    name = 'Predictor coefficients', 
                    show_column_names = F, 
                    column_title = x, 
-                   heatmap_legend_param = list(direction = "horizontal")
+                   heatmap_legend_param = list(direction = "horizontal", 
+                                               at = c(min(mat)-0.1, 0, max(mat)+0.1),
+                                               labels = c(round(min(mat), 1), "0", 
+                                                          round(max(mat), 1))
+                                               )
       )
       draw(ht, heatmap_legend_side = 'bottom', annotation_legend_side = 'bottom')}
     

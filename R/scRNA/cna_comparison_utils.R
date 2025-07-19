@@ -34,6 +34,23 @@ filter_fragmented_cnas = function(x,
     
     # find genes with different karyotypes 
     
+    # removing genes with multiple hits on the same segments (can't handle them in this model!)
+    multihit_genes = x %>% 
+      dplyr::group_by(sample, hgnc_symbol, segment_from, segment_to, karyotype) %>%
+      dplyr::count() %>% # detect genes that appear more than once
+      dplyr::filter(n > 1) %>% 
+      dplyr::select(-n)
+    
+    # filter out the combination of genes, sample and segments with multihit 
+    x = x %>% 
+      dplyr::anti_join(., multihit_genes, by = join_by(
+        'sample' == 'sample', 
+        'hgnc_symbol' == 'hgnc_symbol', 
+        'segment_from' == 'segment_from',  
+        'segment_to' == 'segment_to', 
+        'karyotype' == 'karyotype'
+      ))
+    
     multiple_segments = x %>% 
       dplyr::group_by(sample, hgnc_symbol, segment_from, segment_to, karyotype) %>%
       dplyr::count() %>% # detect genes that appear more than once

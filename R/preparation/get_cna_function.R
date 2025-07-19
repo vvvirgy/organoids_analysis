@@ -21,8 +21,9 @@ get_cna_status = function(x, drivers, filter = TRUE) {
       dplyr::filter(from >= as.numeric(y[2])) %>%
       dplyr::filter(to <= as.numeric(y[3])) %>% 
       dplyr::mutate(karyotype = paste(y[4], y[5], sep = ':')) %>% 
-      dplyr::mutate(segment_id = paste(y[1], y[2], y[3], sep = ':')) %>% 
-      dplyr::mutate(segment_id = gsub(' ', '', segment_id)) %>% 
+      # dplyr::mutate(segment_id = paste(y[1], y[2], y[3], sep = ':')) %>% 
+      # dplyr::mutate(segment_id = gsub(' ', '', segment_id)) %>% 
+      dplyr::mutate(segment_from = as.numeric(y[2]),segment_to = as.numeric(y[3])) %>% 
       dplyr::mutate(QC_PASS = as.logical(y[6]))
     
     return(drivers_on_segment)

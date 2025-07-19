@@ -18,26 +18,26 @@ samples_check = new_mapping_experiment %>%
 # genes_cna_status = readRDS('data/karyotypes_full_cohort_cgs.rds')
 
 # load genes with cna associated (only genes in common with transcriptomics)
-genes_cna_status = readRDS('data/karyotypes_mutations_all_genes_qc.rds') %>% 
-  dplyr::bind_rows() 
+genes_cna_status = readRDS('data/karyotypes_mutations_all_genes_qc_ccf.rds') #%>% 
+  # dplyr::bind_rows() 
 genes_to_check = genes_cna_status$hgnc_symbol %>% unique
 
-proteomics_data_norm %>% 
-  dplyr::mutate(sample = gsub('_a|_b', '', variable)) %>% 
-  # dplyr::filter(sample == '2L') %>% 
-  ggplot(aes(norm_intensity, colour = sample, y = after_stat(count))) + 
-  # geom_histogram(binwidth = 0.1, position = 'identity') +
-  geom_density(alpha = 0.1) +
-  theme_bw()
+# proteomics_data_norm %>% 
+#   dplyr::mutate(sample = gsub('_a|_b', '', variable)) %>% 
+#   # dplyr::filter(sample == '2L') %>% 
+#   ggplot(aes(norm_intensity, colour = sample, y = after_stat(count))) + 
+#   # geom_histogram(binwidth = 0.1, position = 'identity') +
+#   geom_density(alpha = 0.1) +
+#   theme_bw()
 
-raw_data_melted %>% 
-  dplyr::mutate(sample = gsub('_a|_b', '', variable)) %>% 
-  dplyr::mutate(value = log(value, base = 2)) %>% 
-  # dplyr::filter(sample == '2L') %>% 
-  ggplot(aes(value, colour = sample, y = after_stat(count))) + 
-  # geom_histogram(binwidth = 0.1, position = 'identity') +
-  geom_density(alpha = 0.1) +
-  theme_bw()
+# raw_data_melted %>% 
+#   dplyr::mutate(sample = gsub('_a|_b', '', variable)) %>% 
+#   dplyr::mutate(value = log(value, base = 2)) %>% 
+#   # dplyr::filter(sample == '2L') %>% 
+#   ggplot(aes(value, colour = sample, y = after_stat(count))) + 
+#   # geom_histogram(binwidth = 0.1, position = 'identity') +
+#   geom_density(alpha = 0.1) +
+#   theme_bw()
 
 # filter genes that are highly fragmented
 # coad_genes = readRDS('data/all_genes_positions.rds')
@@ -50,12 +50,15 @@ genes = coad_genes %>%
 
 genes_cna_status = genes_cna_status %>% 
   dplyr::mutate(mut_consequence = ifelse(is.na(mut_consequence), 'wild-type', mut_consequence))
+# removing mutations falling on the same segment + multihit mutations + selecting the segments with the maximum overlap over the gene 
 drivers_to_check_correct_samples = filter_fragmented_cnas(genes_cna_status, 
                                                           samples_list = (samples_check$fixed_name %>% unique), 
                                                           genes_to_check = genes_to_check, 
                                                           min_length = 10^6, 
                                                           genes_position = genes, 
                                                           strategy = 'MOv')
+drivers_to_check_correct_samples = drivers_to_check_correct_samples %>% 
+  mutate(mutation_multiplicity = ifelse(mut_consequence == 'wild-type', 0, mutation_multiplicity))
 
 # Filter the data to keep only selected genes and prepare the names to be correct 
 proteomic_genes = proteomics_data_norm %>%
@@ -70,7 +73,7 @@ proteomic_genes = proteomics_data_norm %>%
   distinct()
 
 proteogenomics_data = drivers_to_check_correct_samples %>%
-  dplyr::select(chr, hgnc_symbol, karyotype, sample, is_mutated, mut_consequence, driver_label, CGC_role_COAD, CGC_role_PANCANCER, is_driver_intogen) %>% 
+  dplyr::select(chr, hgnc_symbol, karyotype, sample, is_mutated, mut_consequence, driver_label, CGC_role_COAD, CGC_role_PANCANCER, is_driver_intogen, mutation_multiplicity, VEP.IMPACT) %>% 
   distinct(.keep_all = F) %>% 
   # add correct sample names to map genomics and proteomics
   left_join(., samples_check, by = join_by("sample" == "fixed_name")) %>% 
