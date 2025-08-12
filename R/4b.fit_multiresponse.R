@@ -101,11 +101,12 @@ saveRDS(rna_vs_prot, 'data/rna_vs_prot_data.rds')
 
 # new model fitted!
 set.seed(176613)
+
 fit_multiresponse_model = glm_fit_multiresponse(rna_vs_prot,
                                                 nobs = 4,
                                                 response = c('protein_expression', 'rna_expression'),
-                                                model = as.formula('~ n_low + n_alt + n_trunc + n_wt'), 
-                                                alphas = 1, 
+                                                model = as.formula('~ n_low + n_alt + n_trunc + n_wt'),
+                                                alphas = 1,
                                                 lambda = 'lambda.min')
 
 saveRDS(fit_multiresponse_model, 'data/multiresponse_glm_lasso_multiplicity_v1.rds')
