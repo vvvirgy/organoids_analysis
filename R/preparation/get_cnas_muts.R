@@ -3,22 +3,32 @@ library(CNAqc)
 
 extract_mutational_status = function(x, #cnaqc obj
                                      karyotypes, #result of the previous iteration
-                                     genes_pos # dataframe or list of genes
+                                     genes_pos, # dataframe or list of genes
+                                     which = c('CCF', 'muts')
 ) {
   
   # muts = relative_to_abs_coords(CNAqc::Mutations(x), x$reference_genome)
-  muts = CNAqc::Mutations(x)
-  ccfs = CNAqc::CCF(x) %>% 
-    dplyr::select(chr, from, to, ref, alt, VAF, VEP.SYMBOL, CCF, mutation_multiplicity)
   
-  muts = full_join(muts, ccfs, 
-                   by = join_by('chr' == 'chr', 
-                                'from' == 'from', 
-                                'to' == 'to', 
-                                'ref' == 'ref',
-                                'alt' == 'alt', 
-                                'VAF' == 'VAF',  
-                                'VEP.SYMBOL' == 'VEP.SYMBOL'))
+  muts = CNAqc::Mutations(x)
+  
+  if(which == 'CCF') {
+    
+    ccfs = CNAqc::CCF(x) %>% 
+      dplyr::select(chr, from, to, ref, alt, VAF, VEP.SYMBOL, CCF, mutation_multiplicity)
+    
+    muts = full_join(muts, ccfs, 
+                     by = join_by('chr' == 'chr', 
+                                  'from' == 'from', 
+                                  'to' == 'to', 
+                                  'ref' == 'ref',
+                                  'alt' == 'alt', 
+                                  'VAF' == 'VAF',  
+                                  'VEP.SYMBOL' == 'VEP.SYMBOL')) %>% 
+      dplyr::select(chr, from, to, ref, alt, NV, DP, VAF, SYMBOL, Consequence, IMPACT, driver_label, is_driver, segment_id, QC_PASS, karyotype, mutation_multiplicity, CCF)
+  } else {
+      muts = muts %>% 
+        dplyr::select(chr, from, to, ref, alt, NV, DP, VAF, SYMBOL, Consequence, IMPACT, driver_label, is_driver, segment_id, QC_PASS, karyotype)
+    }
   
   # convert in absolute coordinates
   muts = relative_to_abs_coords(muts, x$reference_genome)
@@ -33,15 +43,15 @@ extract_mutational_status = function(x, #cnaqc obj
     # dplyr::mutate(from = NULL, to = NULL)
   
   muts = muts %>%  
-    dplyr::select(chr, from, to, ref, alt, NV, DP, VAF, VEP.SYMBOL, VEP.Consequence, VEP.IMPACT, driver_label, is_driver, segment_id, QC_PASS, karyotype, mutation_multiplicity, CCF) %>% 
+    # dplyr::select(chr, from, to, ref, alt, NV, DP, VAF, SYMBOL, Consequence, IMPACT, driver_label, is_driver, segment_id, QC_PASS, karyotype, mutation_multiplicity, CCF) %>% 
     tidyr::separate(karyotype, into = c('Major', 'minor'), sep = ':',  convert = TRUE) %>% 
-    dplyr::filter(VEP.SYMBOL != '.') %>% 
+    dplyr::filter(SYMBOL != '.') %>% 
     tidyr::separate(segment_id, into = c('.chr', 'segment_from', 'segment_to'), sep = ':', convert = TRUE) %>% 
     dplyr::mutate(.chr = NULL) %>% 
-    tidyr::separate(VEP.Consequence, into = 'mut_consequence', sep = '&') %>% 
+    tidyr::separate(Consequence, into = 'mut_consequence', sep = '&') %>% 
     dplyr::rename(mut_from = from) %>% 
     dplyr::rename(mut_to = to) %>% 
-    dplyr::filter(VEP.SYMBOL %in% unique(genes_pos)) %>% 
+    dplyr::filter(SYMBOL %in% unique(genes_pos)) %>% 
     dplyr::rename(from = segment_from) %>% 
     dplyr::rename(to = segment_to) %>% 
     relative_to_abs_coords(., x$reference_genome) %>%
@@ -52,7 +62,7 @@ extract_mutational_status = function(x, #cnaqc obj
   muts_with_cna = cna_sample %>% 
     dplyr::full_join(., muts, by = join_by(
       'chr' == 'chr', 
-      'hgnc_symbol' == 'VEP.SYMBOL', 
+      'hgnc_symbol' == 'SYMBOL', 
       'Major' == 'Major',
       'minor' == 'minor',
       'segment_from' == 'segment_from', 
