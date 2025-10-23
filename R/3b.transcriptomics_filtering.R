@@ -19,7 +19,7 @@ all_samples_dict = full_join(matching_samples, new_mapping_experiment,
                                           'fixed_name' == 'fixed_name'), na_matches = 'na')
 # saveRDS(all_samples_dict, 'data/samples_names_dictionary.rds')
 
-normalized_res = readRDS('data/normalized_res_pseudobulk.rds')
+normalized_res = readRDS('data/normalized_res_pseudobulk_v2.rds')
 
 # genes_cna_status = readRDS('data/karyotypes_full_cohort_cgs.rds')
 genes_cna_status = readRDS('data/karyotypes_mutations_all_genes_qc_ccf.rds')
@@ -32,6 +32,12 @@ coad_genes = coad_genes %>%
   dplyr::relocate(hgnc_symbol, .after = to) %>% 
   # dplyr::filter(chr %in% c('chr5', 'chr17')) %>% 
   dplyr::filter(!grepl('LINC', hgnc_symbol)) 
+
+genes = coad_genes %>% 
+  dplyr::relocate(hgnc_symbol, .after = to) %>% 
+  # dplyr::filter(chr %in% c('chr5', 'chr17')) %>% 
+  dplyr::filter(!grepl('LINC', hgnc_symbol)) %>% 
+  dplyr::select(hgnc_symbol, chr, from, to)
 
 genes_cna_status = genes_cna_status %>% 
   dplyr::mutate(mut_consequence = ifelse(is.na(mut_consequence), 'wild-type', mut_consequence))
@@ -72,14 +78,28 @@ transcriptomics_data = drivers_to_check_correct_samples %>%
   dplyr::filter(!is.na(value)) %>% 
   dplyr::mutate(karyotype = paste(Major, minor, sep = ':'))
 
-saveRDS(transcriptomics_data, 'data/transcriptomics_data_all_genes.rds')
+saveRDS(transcriptomics_data, 'data/transcriptomics_data_all_genes_v2.rds')
 
+old_data = readRDS('data/transcriptomics_data_all_genes.rds')
 
-transcriptomics_data %>% 
+old_p = old_data %>% 
   dplyr::filter(hgnc_symbol == 'KRAS') %>% 
   ggplot(aes(x = tot_cna, 
              y = value, colour = karyotype)) + 
   geom_point() +
-  facet_wrap(hgnc_symbol ~ is_mutated, scales = 'free_x') +
+  # facet_wrap(hgnc_symbol ~ is_mutated, scales = 'free_x') +
   theme_bw() + 
-  scale_color_brewer(palette = 'Set1')
+  scale_color_brewer(palette = 'Set1') + 
+  ggtitle('old data')
+
+new = transcriptomics_data %>% 
+  dplyr::filter(hgnc_symbol == 'KRAS') %>% 
+  ggplot(aes(x = tot_cna, 
+             y = value, colour = karyotype)) + 
+  geom_point() +
+  # facet_wrap(hgnc_symbol ~ is_mutated, scales = 'free_x') +
+  theme_bw() + 
+  scale_color_brewer(palette = 'Set1') + 
+  ggtitle('new data')
+
+old_p / new

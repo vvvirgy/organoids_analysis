@@ -19,8 +19,9 @@ rr = ggforestplot::forestplot(
   # psignif = 0.002
   xlab = 'Estimated effect of mutation multiplicity 
   on the RNA expression',
-  title = 'Genes multiplicity'
+  title = 'Genes multiplicity - RNA'
 )
+ggsave('res/rna_forest_plot.png', rr, width = 6, height = 5)
 
 rna_msh6 = rna_fit_coeffs %>% 
   filter(gene == 'MSH6')
@@ -44,8 +45,9 @@ pp = ggforestplot::forestplot(
   # psignif = 0.002
   xlab = 'Estimated effect of mutation multiplicity 
   on the protein expression',
-  title = 'Genes multiplicity'
+  title = 'Genes multiplicity - protein'
 )
+ggsave('res/prot_forest_plot.png', pp, width = 6, height = 5)
 
 rr + pp
 
@@ -82,10 +84,40 @@ smad2 %>%
   # ggsci::scale_fill_frontiers() +
   scale_fill_manual(values = c('RNA' = 'steelblue', 'Protein' = 'goldenrod')) +
   ggtitle('SMAD2 betas') + 
-  facet_wrap(vars(assay), scales = 'free_x') + 
+  facet_wrap(vars(assay), scales = 'free') + 
   xlab('predictor') + 
   ylab('beta')
 
+
+smad2_rna %>% 
+  # mutate(assay = factor(assay, levels = c('RNA','Protein'))) %>% 
+  ggplot(aes(x = term, y = estimate, fill = assay)) +
+  geom_bar(stat = 'identity') +
+  # theme_light() +
+  theme_bw()+
+  # scale_fill_brewer(palette = '') +
+  # ggsci::scale_fill_frontiers() +
+  scale_fill_manual(values = c('RNA' = 'steelblue')) + #, 'Protein' = 'goldenrod')) +
+  # ggtitle('RNA') + 
+  facet_wrap(vars(assay), scales = 'free') + 
+  xlab('predictor') + 
+  ylab('beta')
+ggsave('res/smad2_beta_rna.png', width = 5, height = 3, bg = 'white')
+
+smad2_prot %>% 
+  # mutate(assay = factor(assay, levels = c('RNA','Protein'))) %>% 
+  ggplot(aes(x = term, y = estimate, fill = assay)) +
+  geom_bar(stat = 'identity') +
+  # theme_light() +
+  theme_bw()+
+  # scale_fill_brewer(palette = '') +
+  # ggsci::scale_fill_frontiers() +
+  scale_fill_manual(values = c('Protein' = 'goldenrod')) +
+  # ggtitle('Protein') + 
+  facet_wrap(vars(assay), scales = 'free') + 
+  xlab('predictor') + 
+  ylab('beta')
+ggsave('res/smad2_beta_prot.png', width = 5, height = 3, bg = 'white')
 # (smad2_rna + smad2_prot) + 
 #   plot_layout(guides = 'collect') & 
 #   theme(legend.position = 'bottom')

@@ -6,13 +6,13 @@ source('organoids_analysis/R/functions_utils/get_genes_genomics_positions.R')
 # transcriptomics_data = readRDS('data/transcriptomics_data_all_genes.rds')
 # proteogenomics_data = readRDS('data/proteogenomics_data_all_genes.rds') 
 
-rna = readRDS('data/normalized_res_pseudobulk.rds')
-protein = readRDS('data/proteomics_tic_normalised.rds')
+rna = readRDS('data/normalized_res_pseudobulk_v2.rds')
+protein = readRDS('data/proteomics_normalized.rds')
 
 genes = unique(c(rownames(rna), protein$protein))
 
 all_genes = get_grch38_genomics_positions(genes, 'data/cnaqc/11_PDO.rds')
-saveRDS(all_genes, 'data/all_genes_positions.rds')
+saveRDS(all_genes, 'data/all_genes_positions_v2.rds')
 
 # add some metadata to include the information on cgs and intogen annotation (will be used later)
 
@@ -65,7 +65,7 @@ missing_genes = all_genes %>%
 
 missing_genes = get_grch38_genomics_positions(missing_genes, 'data/cnaqc/11_PDO.rds')
 missing_genes = all_genes %>% 
-  dplyr::select(hgnc_symbol, CGC_role_COAD, CGC_role_PANCANCER, is_driver) %>% 
+  dplyr::select(hgnc_symbol, CGC_role_COAD, CGC_role_PANCANCER, is_driver_intogen) %>% 
   dplyr::filter(hgnc_symbol %in% missing_genes$hgnc_symbol) %>% 
   dplyr::full_join(., missing_genes, by = 'hgnc_symbol')
 all_genes = all_genes %>% 
