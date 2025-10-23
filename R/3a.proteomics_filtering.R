@@ -5,7 +5,7 @@ source('organoids_analysis/R/functions_utils/fit_plots.R')
 source('organoids_analysis/R/scRNA/cna_comparison_utils.R')
 
 # load proteomics data after normalization
-proteomics_data_norm = readRDS('data/proteomics_tic_normalised.rds')
+proteomics_data_norm = readRDS('data/proteomics_normalized.rds')
 
 # get correct sample names
 new_mapping_experiment = readRDS("data/mapping_samples.rds")
@@ -62,14 +62,14 @@ drivers_to_check_correct_samples = drivers_to_check_correct_samples %>%
 
 # Filter the data to keep only selected genes and prepare the names to be correct 
 proteomic_genes = proteomics_data_norm %>%
-  dplyr::filter(Genes %in% genes_to_check) %>% 
-  dplyr::mutate(PDO = gsub("_a|_b", "", variable)) %>% 
-  dplyr::group_by(PDO, Genes) %>% 
-  dplyr::mutate(PDO = gsub('_HSR', 'HSR', PDO)) %>% 
-  dplyr::rename(replicate = variable) %>% 
-  group_by(PDO, Genes) %>%
-  mutate(mean_intensity = mean(norm_intensity)) %>%
-  dplyr::select(everything(), -c(replicate, norm_intensity)) %>%
+  dplyr::filter(PG.Genes %in% genes_to_check) %>% 
+  # dplyr::mutate(PDO = gsub("_a|_b", "", variable)) %>% 
+  dplyr::group_by(PDO, PG.Genes) %>% 
+  # dplyr::mutate(PDO = gsub('_HSR', 'HSR', PDO)) %>% 
+  dplyr::rename(replicate = sample) %>% 
+  group_by(PDO, PG.Genes) %>%
+  mutate(mean_intensity = mean(transformedIntensity)) %>%
+  dplyr::select(everything(), -c(replicate, transformedIntensity, log2_Intensity, sampleName, Intensity)) %>%
   distinct()
 
 proteogenomics_data = drivers_to_check_correct_samples %>%
@@ -78,7 +78,7 @@ proteogenomics_data = drivers_to_check_correct_samples %>%
   # add correct sample names to map genomics and proteomics
   left_join(., samples_check, by = join_by("sample" == "fixed_name")) %>% 
   # add proteomics data
-  full_join(., proteomic_genes, by = join_by("proteomics_code" == "PDO", "hgnc_symbol" == "Genes")) %>% 
+  full_join(., proteomic_genes, by = join_by("proteomics_code" == "PDO", "hgnc_symbol" == "PG.Genes")) %>% 
   # remove NAs and do some filtering
   dplyr::filter(!is.na(proteomics_code)) %>% 
   distinct() %>% 
@@ -96,14 +96,25 @@ proteogenomics_data = drivers_to_check_correct_samples %>%
 #   dplyr::select(everything(), -c(replicate, norm_intensity)) %>%
 #   distinct()
 
-saveRDS(proteogenomics_data, 'data/proteogenomics_data_all_genes.rds')
+saveRDS(proteogenomics_data, 'data/proteogenomics_data_all_genes_new_norm.rds')
 
-proteogenomics_data %>% 
-  filter(hgnc_symbol == 'KRAS') %>% 
+p_old = proteogenomics_data_v2 %>% 
+  filter(hgnc_symbol == 'PIK3CA') %>% 
   ggplot(aes(x = tot_cna, 
              y = mean_intensity, colour = karyotype)) + 
   geom_point(size = 8) +
-  facet_wrap(hgnc_symbol ~ is_mutated, scales = 'free_x') +
+  # facet_wrap(hgnc_symbol ~ is_mutated, scales = 'free_x') +
   theme_bw() + 
-  scale_color_brewer(palette = 'Set1')
+  scale_color_brewer(palette = 'Set1') + 
+  ggtitle('old normalization')
+
+p_new = proteogenomics_data %>% 
+  filter(hgnc_symbol == 'PIK3CA') %>% 
+  ggplot(aes(x = tot_cna, 
+             y = mean_intensity, colour = karyotype)) + 
+  geom_point(size = 8) +
+  # facet_wrap(hgnc_symbol ~ is_mutated, scales = 'free_x') +
+  theme_bw() + 
+  scale_color_brewer(palette = 'Set1') + 
+  ggtitle('new normalization')
   

@@ -4,10 +4,12 @@ setwd("/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj")
 # library(glmnet)
 library(tidyverse)
 library(parallel)
+library(predict3d)
+library(jtools)
 # source('/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj/organoids_analysis/R/functions_utils/glm_multiresponse.R')
 source('/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj/organoids_analysis/R/functions_utils/classify_muts.R')
 
-proteogenomics_data = readRDS('data/proteogenomics_data_all_genes.rds') %>%
+proteogenomics_data = readRDS('data/proteogenomics_data_all_genes_new_norm.rds') %>%
   dplyr::mutate(mutation_status = ifelse(is_mutated == TRUE, 'Mutated', 'Wild-type')) %>%
   dplyr::mutate(mutation_status = factor(mutation_status, levels = c('Wild-type', 'Mutated'))) %>%
   dplyr::rename(protein_expression = mean_intensity) %>%
@@ -21,24 +23,79 @@ proteogenomics_data = readRDS('data/proteogenomics_data_all_genes.rds') %>%
 
 # transcriptomics_data = classify_mutations(transcriptomics_data) 
 proteogenomics_data = classify_mutations(proteogenomics_data)
-
+proteogenomics_data = proteogenomics_data %>% 
+  dplyr::filter(category != 'truncating')
 # all_data = list(
 #   'RNA' = transcriptomics_data, 
 #   'Protein' = proteogenomics_data
 # )
 
 response = grep('expression', colnames(proteogenomics_data), value = T)
-model = as.formula(paste0(response, '~ n_low + n_alt + n_trunc + n_wt'))
+# model = as.formula(paste0(response, '~ n_low + n_alt + n_trunc + n_wt'))
+# model = as.formula(paste0(response, '~ p_low + p_alt + p_trunc + ploidy_diff'))
+model = as.formula(paste0(response, '~ ploidy_diff + mutation_multiplicity'))
 
-glm_fit_v2 = mclapply(proteogenomics_data$hgnc_symbol %>% unique, function(g) {
+proteogenomics_data = proteogenomics_data %>% 
+  mutate(ploidy_diff = tot_cna - 2) 
+  # mutate(p_low = n_low/tot_cna) %>% 
+  # mutate(p_alt = n_alt/tot_cna) %>% 
+  # mutate(p_trunc = n_trunc/tot_cna) %>% 
+  # mutate(p_wt = n_wt/tot_cna) %>% 
+  # center the ploidy in 2
+
+# glm_fit_v2 = mclapply(proteogenomics_data$hgnc_symbol %>% unique, function(g) {
+#   print(g)
+#   df = proteogenomics_data %>% dplyr::filter(hgnc_symbol == g)
+#   res = lm(formula = model, data =  df)
+#   return(res)
+# }, mc.cores = 4, mc.preschedule = T)
+# names(glm_fit_v2) = proteogenomics_data$hgnc_symbol %>% unique
+
+glm_fit_v2 = lapply(proteogenomics_data$hgnc_symbol %>% unique, function(g) {
   print(g)
   df = proteogenomics_data %>% dplyr::filter(hgnc_symbol == g)
-  res = glm(formula = model, data =  df)
+  res = lm(formula = model, data =  df)
   return(res)
-}, mc.cores = 4, mc.preschedule = T)
+})
 names(glm_fit_v2) = proteogenomics_data$hgnc_symbol %>% unique
+saveRDS(glm_fit_v2, 'data/proteomics_lm_fit_ploidy_diff_multiplicity.rds')
 
-saveRDS(glm_fit_v2, 'data/glm_fit_v2_prot.rds')
+fit_res = lapply(glm_fit_v2 %>% names, function(x) {
+  glm_fit_v2[[x]] %>% 
+    broom::tidy() %>% 
+    mutate(gene = x)
+}) %>% 
+  bind_rows()
+
+saveRDS(fit_res, 'data/proteomics_lm_fit_ploidy_diff_multiplicity_tidy.rds')
+
+
+fit_res %>% 
+  dplyr::filter(term == 'ploidy_diff') %>% 
+  dplyr::filter(p.value <= 0.05) %>% 
+  filter(estimate < 0) 
+
+
+fit_res %>% 
+  dplyr::filter(term != '(Intercept)') %>% 
+  ggplot(aes(estimate, fill = term)) + 
+  geom_histogram(binwidth = 0.01) + 
+  facet_wrap(~term) + 
+  theme_bw() + 
+  xlim(c(-5, 5))
+
+# proteogenomics_data %>% 
+#   filter(hgnc_symbol == 'KRAS') %>% 
+#   ggplot(aes(y = protein_expression, x = factor(mutation_multiplicity))) + 
+#   geom_boxplot()
+
+
+
+
+
+
+fit_res %>% 
+  
 
 # glm_fit_v2 = lapply(all_data, function(x) {
 #   response = grep('expression', colnames(x), value = T)

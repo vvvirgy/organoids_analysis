@@ -13,13 +13,14 @@ source('/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj/organoids_analysis/
 #   dplyr::rename(protein_expression = mean_intensity) %>% 
 #   dplyr::filter(!is.na(protein_expression)) 
 
-transcriptomics_data = readRDS('data/transcriptomics_data_all_genes.rds') %>% 
+transcriptomics_data = readRDS('data/transcriptomics_data_all_genes_v2.rds') %>% 
   dplyr::mutate(mutation_status = ifelse(is_mutated == TRUE, 'Mutated', 'Wild-type')) %>% 
   dplyr::mutate(mutation_status = factor(mutation_status, levels = c('Wild-type', 'Mutated'))) %>% 
   dplyr::rename(rna_expression = value) %>% 
   dplyr::filter(!is.na(rna_expression))
 
-transcriptomics_data = classify_mutations(transcriptomics_data) 
+transcriptomics_data = classify_mutations(transcriptomics_data) %>% 
+  dplyr::filter(category != 'truncating')
 # proteogenomics_data = classify_mutations(proteogenomics_data) 
 
 # all_data = list(
@@ -28,8 +29,31 @@ transcriptomics_data = classify_mutations(transcriptomics_data)
 # )
 
 response = grep('expression', colnames(transcriptomics_data), value = T)
-model = as.formula(paste0(response, '~ n_low + n_alt + n_trunc + n_wt'))
+# model = as.formula(paste0(response, '~ n_low + n_alt + n_trunc + n_wt'))
+model = as.formula(paste0(response, '~ ploidy_diff + mutation_multiplicity'))
 
+transcriptomics_data = transcriptomics_data %>% 
+  mutate(ploidy_diff = tot_cna - 2) 
+
+lm_fit_rna = lapply(transcriptomics_data$hgnc_symbol %>% unique, function(g) {
+  print(g)
+  df = transcriptomics_data %>% dplyr::filter(hgnc_symbol == g)
+  res = lm(formula = model, data =  df)
+  return(res)
+})
+names(lm_fit_rna) = transcriptomics_data$hgnc_symbol %>% unique
+saveRDS(lm_fit_rna, 'data/transcriptomics_lm_fit_ploidy_diff_multiplicity.rds')
+
+fit_res_rna = lapply(lm_fit_rna %>% names, function(x) {
+  lm_fit_rna[[x]] %>% 
+    broom::tidy() %>% 
+    mutate(gene = x)
+}) %>% 
+  bind_rows()
+
+saveRDS(fit_res_rna, 'data/transcriptomics_lm_fit_ploidy_diff_multiplicity_tidy.rds')
+
+######
 glm_fit_v2 = mclapply(transcriptomics_data$hgnc_symbol %>% unique, function(g) {
   print(g)
   df = transcriptomics_data %>% dplyr::filter(hgnc_symbol == g)
