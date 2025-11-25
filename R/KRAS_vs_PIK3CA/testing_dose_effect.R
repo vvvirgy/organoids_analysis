@@ -82,7 +82,7 @@ names(tests_all_genes) = genes_list
 saveRDS(tests_all_genes, 'data/pik3_complexes_mut_status_kras_multiplicity.rds')
 
 
-
+tests_all_genes = readRDS('data/pik')
 
 # fisher test
 tests_all_genes = lapply(genes_list, function(x) {
