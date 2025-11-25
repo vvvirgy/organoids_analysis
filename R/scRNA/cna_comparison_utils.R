@@ -9,13 +9,31 @@ filter_fragmented_cnas = function(x,
                                                'FS', # first segment that covers the gene 
                                                'MOv' # maximise the overlap
                                                )) {
+  # treat multihits
   x = x %>% 
     dplyr::filter(sample %in% samples_list) %>%
     dplyr::filter(hgnc_symbol %in% genes_to_check) %>%
     tidyr::separate(segment_id, into = c('chr', 'segment_from', 'segment_to'), sep = ':', convert = TRUE) %>% 
-    dplyr::mutate(length = segment_to - segment_from) %>%
-    dplyr::filter(length > min_length) %>% 
-    dplyr::filter(QC_PASS == TRUE)
+    dplyr::group_by(sample, hgnc_symbol, is_mutated) %>%
+    group_by(sample, hgnc_symbol) %>% 
+    mutate(
+      has_multihit = n() > 1 & any(is_mutated == TRUE),
+      mut_consequence = case_when(
+        has_multihit ~ "multihit",
+        TRUE ~ mut_consequence
+      )
+    ) %>% 
+    dplyr::mutate(length = segment_to - segment_from) %>% 
+    filter(mut_consequence != 'multihit')
+    # dplyr::mutate(mut_consequence = case_when(
+    #   (n()>1 & is_mutated == TRUE) ~ 'multihit', 
+    #   .default = mut_consequence
+    # )) %>% 
+    # group_by(sample, hgnc_symbol) %>% 
+    # mutate(mut_consequence = ifelse(any(mut_consequence) == 'multihit', 'multihit', mut_consequence))
+    
+    # 
+    # dplyr::filter(n() == 1)
   
   # handle multisegments situations
   if (strategy == 'MMSl') {
@@ -36,6 +54,7 @@ filter_fragmented_cnas = function(x,
     
     # removing genes with multiple hits on the same segments (can't handle them in this model!)
     multihit_genes = x %>% 
+      distinct(sample, hgnc_symbol, QC_PASS, mut_consequence, segment_from, segment_to, chr, karyotype) %>% 
       dplyr::group_by(sample, hgnc_symbol, segment_from, segment_to, karyotype) %>%
       dplyr::count() %>% # detect genes that appear more than once
       dplyr::filter(n > 1) %>% 
@@ -49,9 +68,13 @@ filter_fragmented_cnas = function(x,
         'segment_from' == 'segment_from',  
         'segment_to' == 'segment_to', 
         'karyotype' == 'karyotype'
-      ))
+      )) %>% 
+      dplyr::filter(length > min_length) %>% 
+      dplyr::filter(QC_PASS == TRUE)
     
     multiple_segments = x %>% 
+      dplyr::select(-c(from_gene, to_gene)) %>% 
+      dplyr::distinct() %>% 
       dplyr::group_by(sample, hgnc_symbol, segment_from, segment_to, karyotype) %>%
       dplyr::count() %>% # detect genes that appear more than once
       dplyr::filter(n == 1) %>% # remove multihit genes (same segment)

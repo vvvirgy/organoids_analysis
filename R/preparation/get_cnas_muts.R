@@ -4,7 +4,10 @@ library(CNAqc)
 extract_mutational_status = function(x, #cnaqc obj
                                      karyotypes, #result of the previous iteration
                                      genes_pos, # dataframe or list of genes
-                                     which = c('CCF', 'muts')
+                                     which = c('CCF', 'muts'), 
+                                     symbol_column = 'VEP.SYMBOL', 
+                                     consequence_column = 'VEP.Consequence', 
+                                     impact_column = 'VEP.IMPACT'
 ) {
   
   # muts = relative_to_abs_coords(CNAqc::Mutations(x), x$reference_genome)
@@ -14,7 +17,7 @@ extract_mutational_status = function(x, #cnaqc obj
   if(which == 'CCF') {
     
     ccfs = CNAqc::CCF(x) %>% 
-      dplyr::select(chr, from, to, ref, alt, VAF, VEP.SYMBOL, CCF, mutation_multiplicity)
+      dplyr::select(chr, from, to, ref, alt, VAF, all_of(symbol_column), CCF, mutation_multiplicity)
     
     muts = full_join(muts, ccfs, 
                      by = join_by('chr' == 'chr', 
@@ -24,22 +27,32 @@ extract_mutational_status = function(x, #cnaqc obj
                                   'alt' == 'alt', 
                                   'VAF' == 'VAF',  
                                   'VEP.SYMBOL' == 'VEP.SYMBOL')) %>% 
-      dplyr::select(chr, from, to, ref, alt, NV, DP, VAF, SYMBOL, Consequence, IMPACT, driver_label, is_driver, segment_id, QC_PASS, karyotype, mutation_multiplicity, CCF)
+      dplyr::select(chr, from, to, ref, alt, NV, DP, VAF, all_of(c(symbol_column, consequence_column, impact_column)), driver_label, is_driver, segment_id, QC_PASS, karyotype, mutation_multiplicity, CCF)
   } else {
       muts = muts %>% 
-        dplyr::select(chr, from, to, ref, alt, NV, DP, VAF, SYMBOL, Consequence, IMPACT, driver_label, is_driver, segment_id, QC_PASS, karyotype)
+        dplyr::select(chr, from, to, ref, alt, NV, DP, VAF, all_of(c(symbol_column, consequence_column, impact_column)), driver_label, is_driver, segment_id, QC_PASS, karyotype)
     }
   
+  muts_new_names = setNames(
+    nm = c('SYMBOL', 'Consequence', 'IMPACT'),
+    object = c(symbol_column, consequence_column, impact_column)
+  )
+  
   # convert in absolute coordinates
-  muts = relative_to_abs_coords(muts, x$reference_genome)
+  muts = relative_to_abs_coords(muts, x$reference_genome) %>% 
+    dplyr::rename(., all_of(muts_new_names))
+  
+  new_names = setNames(
+    nm = c('from_gene', 'to_gene'),
+    object = c('from', 'to')
+  )
   
   cna_sample = karyotypes %>% 
     dplyr::filter(sample == x$sample) %>% 
     # tidyr::separate(segment_id, sep = ':', into = c('.chr', 'segment_from', 'segment_to'), convert = TRUE) %>% 
     dplyr::mutate(.chr = NULL) %>% 
     tidyr::separate(karyotype, into = c('Major', 'minor'), sep = ':',  convert = TRUE) %>% 
-    dplyr::rename(from_gene = from) %>%
-    dplyr::rename(to_gene = to)
+    dplyr::rename(., all_of(new_names))
     # dplyr::mutate(from = NULL, to = NULL)
   
   muts = muts %>%  
@@ -72,6 +85,7 @@ extract_mutational_status = function(x, #cnaqc obj
     ))
   
   muts_with_cna = muts_with_cna %>% 
+    # is_tibble() %>% 
     dplyr::mutate(segment_id = paste(chr, segment_from, segment_to, sep = ':'), 
                   karyotype = paste(Major, minor, sep = ':'), 
                   is_mutated = ifelse(is.na(mut_consequence), FALSE, TRUE), 

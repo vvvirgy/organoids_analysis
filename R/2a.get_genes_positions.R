@@ -2,6 +2,8 @@ library(tidyverse)
 library(biomaRt)
 source('organoids_analysis/R/functions_utils/get_genes_genomics_positions.R')
 
+# NB --> the position of genes during the time can sligtly change due to changes in the ensembl genome. re do this step as little as possible
+
 # first, extract the positions of all the genes
 # transcriptomics_data = readRDS('data/transcriptomics_data_all_genes.rds')
 # proteogenomics_data = readRDS('data/proteogenomics_data_all_genes.rds') 
@@ -9,7 +11,7 @@ source('organoids_analysis/R/functions_utils/get_genes_genomics_positions.R')
 rna = readRDS('data/normalized_res_pseudobulk_v2.rds')
 protein = readRDS('data/proteomics_normalized.rds')
 
-genes = unique(c(rownames(rna), protein$protein))
+genes = unique(c(rownames(rna), protein$PG.Genes))
 
 all_genes = get_grch38_genomics_positions(genes, 'data/cnaqc/11_PDO.rds')
 saveRDS(all_genes, 'data/all_genes_positions_v2.rds')
@@ -73,9 +75,24 @@ all_genes = all_genes %>%
   bind_rows(., missing_genes)
 
 all_genes = all_genes %>% 
-  dplyr::mutate(CGC_role_COAD = ifelse(is.na(CGC_role_COAD), 'None', CGC_role_COAD), 
-                CGC_role_PANCANCER = ifelse(is.na(CGC_role_PANCANCER), 'None', CGC_role_COAD), 
-                is_driver_intogen = ifelse(is.na(is_driver_intogen), FALSE, is_driver_intogen))
+  dplyr::mutate(CGC_role_COAD = ifelse(is.na(CGC_role_COAD), 'None', CGC_role_COAD),
+                CGC_role_PANCANCER = ifelse(is.na(CGC_role_PANCANCER), 'None', CGC_role_PANCANCER),
+                is_driver_intogen = ifelse(is.na(is_driver_intogen), FALSE, is_driver_intogen)) %>%
+  mutate(CGC_role_COAD = case_when( 
+    CGC_role_COAD == 'oncogene, fusion' ~ 'oncogene', 
+    CGC_role_COAD == 'TSG, fusion' ~ 'TSG',
+    CGC_role_COAD == 'oncogene, TSG, fusion' ~ 'mixed',
+    CGC_role_COAD == 'oncogene, TSG' ~ 'mixed',
+    .default = CGC_role_COAD
+  ), 
+  CGC_role_PANCANCER = case_when( 
+    CGC_role_PANCANCER == 'oncogene, fusion' ~ 'oncogene', 
+    CGC_role_PANCANCER == 'TSG, fusion' ~ 'TSG',
+    CGC_role_PANCANCER == 'oncogene, TSG, fusion' ~ 'mixed',
+    CGC_role_PANCANCER == 'oncogene, TSG' ~ 'mixed',
+    CGC_role_PANCANCER == "fusion, oncogene" ~ 'oncogene', 
+    .default = CGC_role_PANCANCER
+  ))
 # coad_drivers = get_grch38_genomics_positions(coad_drivers, 'data/cnaqc/11_PDO.rds')
 saveRDS(all_genes, 'data/all_genes_positions_info.rds')
 
