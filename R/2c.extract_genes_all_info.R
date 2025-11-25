@@ -13,7 +13,10 @@ coad_genes = coad_genes %>%
 
 genes_karyo_muts = lapply(cnas, function(x) {
   print(x$sample)
-  tryCatch({extract_mutational_status(x, karyotypes = genes_karyo, genes_pos = coad_genes)}, 
+  tryCatch({extract_mutational_status(x, 
+                                      karyotypes = genes_karyo, 
+                                      genes_pos = coad_genes, 
+                                      which = 'CCF')}, 
            error = function(e) {
              NA
            })
@@ -22,7 +25,25 @@ genes_karyo_muts = Filter(function(x) {!is.null(nrow(x))}, genes_karyo_muts)
 genes_karyo_muts = genes_karyo_muts %>% 
   bind_rows()
 
-saveRDS(genes_karyo_muts, 'data/karyotypes_mutations_all_genes_qc_ccf.rds')
+saveRDS(genes_karyo_muts, 'data/karyotypes_mutations_all_genes_qc_ccf_v2.rds')
+
+
+# extract using the mutations and not caring of multiplicity
+genes_karyo_muts = lapply(cnas, function(x) {
+  print(x$sample)
+  tryCatch({extract_mutational_status(x, 
+                                      karyotypes = genes_karyo, 
+                                      genes_pos = coad_genes, 
+                                      which = 'muts')}, 
+           error = function(e) {
+             NA
+           })
+}) 
+genes_karyo_muts = Filter(function(x) {!is.null(nrow(x))}, genes_karyo_muts)
+genes_karyo_muts = genes_karyo_muts %>% 
+  bind_rows()
+
+saveRDS(genes_karyo_muts, 'data/karyotypes_mutations_all_genes_qc_only_muts.rds')
 
 # 
 # genes_karyo_muts %>% 
