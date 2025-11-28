@@ -24,14 +24,14 @@ genes_list = lapply(cnas[samples_to_use], function(x) {
     distinct()
 }) %>% 
   bind_rows() %>% 
-  pull(VEP.SYMBOL) %>% 
-  grep('^PIK',., value = T) %>% 
-  unique
-  # group_by(VEP.SYMBOL) %>% 
-  # count %>% 
-  # dplyr::filter(n >= 5) %>% 
-  # dplyr::filter(VEP.SYMBOL != 'KRAS')
-# genes_list = genes_list$VEP.SYMBOL
+  # pull(VEP.SYMBOL) %>% 
+  # grep('^PIK',., value = T) %>% 
+  # unique
+  group_by(VEP.SYMBOL) %>%
+  count %>%
+  dplyr::filter(n >= 5) %>%
+  dplyr::filter(VEP.SYMBOL != 'KRAS')
+genes_list = genes_list$VEP.SYMBOL
 
 get_gene_multiplicity = function(x, genes) {
   CNAqc::CCF(x) %>% 
@@ -81,9 +81,7 @@ tests_all_genes = lapply(genes_list, function(x) {
 names(tests_all_genes) = genes_list
 saveRDS(tests_all_genes, 'data/pik3_complexes_mut_status_kras_multiplicity.rds')
 
-
-tests_all_genes = readRDS('data/pik')
-
+tt = readRDS('data/pik3_complexes_mut_status_kras_multiplicity.rds')
 # fisher test
 tests_all_genes = lapply(genes_list, function(x) {
   form = as.formula(paste0('n ~ KRAS + ', x))

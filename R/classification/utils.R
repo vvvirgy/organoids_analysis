@@ -290,12 +290,94 @@ get_prevalent_class = function(x, filter = TRUE) {
     mutate(prop = n/sum(n)) 
 }
 
+get_prevalent_class_for_gene_type = function(x, filter = TRUE) {
+  if(filter == TRUE) {
+    x = x %>% 
+      filter(!is.na(cls_dosage))}
+  x %>% 
+    filter(cls_dosage != 'Control') %>% 
+    group_by(hgnc_symbol) %>% 
+    count(cls_dosage) %>% 
+    mutate(prop = n/sum(n)) 
+}
+
 # plotting -----------------
 # plot expression 
-dosage_colors = setNames(
-  nm = c('Dosage_compensating', 'Dosage_sensitive', 'Dosage_insensitive', 'Haploinsufficient', 'Mutation_sensitive', 'Mutation_insensitive', 'Control', 'Not_assigned'), 
-  object = c('#BF092F', '#001BB7', '#31694E', '#3B9797', '#6B3F69',  '#E195AB', '#84994F', '#CBCBCB')
+
+## plot utilities ----
+
+# ggplot theme
+light_theme = function() {
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), 
+        legend.position = 'bottom', 
+        legend.title = element_text(hjust = 0.5, 
+                                    vjust = 1))
+}
+
+# alteration colors
+alt_colors = setNames(
+  # object = c('#4A70A9', '#658C58', '#B95E82', '#8D5F8C'),
+  c('#476EAE', '#48B3AF', '#A7E399', '#F6FF99'), 
+  nm = c("Wild-type, CNA", 'Mutated, CNA', 'Mutated, no CNA', 'Wild-type, no CNA')
 )
+
+# assay colors
+omics_cols = setNames(object = c('steelblue', 'goldenrod'), c('RNA', 'Protein'))
+
+# classes 
+levels_cls = c('Not_assigned', 'Dosage_compensating', 'Dosage_sensitive', 'Dosage_insensitive', 
+               'Haploinsufficient', 'Mutation_sensitive', 'Mutation_insensitive', 
+               'Control')
+
+dosage_colors = setNames(
+  nm = c(
+    'Not_assigned',
+    'Dosage_sensitive', 
+    'Dosage_compensating', 
+    'Dosage_insensitive', 
+    'Haploinsufficient', 
+    'Mutation_sensitive', 
+    'Mutation_insensitive', 
+    'Control'
+    ), 
+  # object = c(
+  #   '#BF092F', 
+  #   '#5459AC', 
+  #   '#31694E', 
+  #   '#3B9797', 
+  #   '#6B3F69', 
+  #   '#E195AB', 
+  #   # '#84994F',
+  #   '#809D3C',
+  #   '#CBCBCB')
+  object = c(
+    '#CBCBCB',
+    '#BF092F', 
+    '#1E5128', 
+    '#3B9797', 
+    '#28518A', 
+    '#5D2F77', 
+    '#C95792', 
+    # '#809D3C',
+    '#5D8736'
+    )
+)
+# 
+# cols = c(
+#   '#BF092F', 
+#   '#28518A', 
+#   '#1E5128', 
+#   '#3B9797', 
+#   '#5D2F77', 
+#   '#C95792', 
+#   # '#809D3C',
+#   '#5D8736',
+#   '#CBCBCB')
+# scales::show_col(cols)
+
+## plot functions ----
+
+### by gene ----
 
 plot_expr_gene_by_cls = function(x, gene, which, ploidy_seq = seq(2:6)) {
   df = x %>% 
@@ -303,78 +385,154 @@ plot_expr_gene_by_cls = function(x, gene, which, ploidy_seq = seq(2:6)) {
     # mutate(tot_cna = factor(tot_cna)) %>% 
     filter(!is.na(cls_dosage)) %>% 
     filter(!is.na(mutation_status)) 
-  max_expr = max(df$expression) + 3
-  min_expr = min(df$expression) - 2
   
-  conf_int = df %>% 
-    select(mu_not_alt, starts_with('CI')) %>% 
-    filter(!is.na(mu_not_alt)) %>% 
-    distinct() %>% 
-    slice(rep(1,length(ploidy_seq))) %>% 
-    mutate(ploidy = ploidy_seq, 
-           CI = 1-CI) %>% 
-    mutate(theorical_expression = mu_not_alt*ploidy, 
-           CI_lower = CI_lower*ploidy, 
-           CI_upper = CI_upper*ploidy, 
-           theoric = 'Theoretical expression', 
-           CI = as.character(CI))
-   
-  ci_col = setNames(nm = conf_int$CI %>% unique, object = 'lightskyblue')
-  
-  p = df %>% 
-    # mutate(theoric = 'Theoretical expression') %>% 
-    ggplot(aes(x = tot_cna, 
-               y = expression, 
-               color = cls_dosage, 
-               shape = mutation_status)) + 
-    geom_ribbon(data = conf_int, 
-                aes(
-                  x = ploidy,
-                  ymin = CI_lower, 
-                  ymax = CI_upper, 
-                  fill = CI
+  if(nrow(df) > 2) {
+    
+    max_expr = max(df$expression) + 3
+    min_expr = min(df$expression) - 2
+    
+    conf_int = df %>% 
+      group_by(Assay) %>% 
+      select(mu_not_alt, starts_with('CI')) %>% 
+      filter(!is.na(mu_not_alt)) %>% 
+      distinct() %>% 
+      slice(rep(1,length(ploidy_seq))) %>% 
+      mutate(ploidy = ploidy_seq, 
+             CI = 1-CI) %>% 
+      mutate(theorical_expression = mu_not_alt*ploidy, 
+             CI_lower = CI_lower*ploidy, 
+             CI_upper = CI_upper*ploidy, 
+             theoric = 'Theoretical expression', 
+             CI = as.character(CI))
+    
+    ci_col = setNames(nm = conf_int$CI %>% unique, object = 'lightskyblue')
+    
+    p = df %>% 
+      # mutate(theoric = 'Theoretical expression') %>% 
+      ggplot(aes(x = tot_cna, 
+                 y = expression, 
+                 color = cls_dosage, 
+                 shape = mutation_status)) + 
+      geom_ribbon(data = conf_int, 
+                  aes(
+                    x = ploidy,
+                    ymin = CI_lower, 
+                    ymax = CI_upper, 
+                    fill = CI
+                  ), 
+                  inherit.aes = F, 
+                  alpha = 0.3, 
+                  # fill = 'lightskyblue', 
+                  show.legend = T) + 
+      geom_point(size = 3) + 
+      geom_line(data = conf_int,
+                aes(y = theorical_expression, 
+                    x = ploidy,
+                    linetype = theoric
                 ), 
                 inherit.aes = F, 
-                alpha = 0.3, 
-                # fill = 'lightskyblue', 
-                show.legend = T) + 
-    geom_point(size = 3) + 
-    geom_line(data = conf_int,
-                aes(y = theorical_expression, 
-                  x = ploidy,
-                  linetype = theoric
-                  ), 
-              inherit.aes = F, 
-              # linetype = 'dashed',
-              alpha = .6) + 
-    theme_bw() + 
-    # geom_hline(data = conf_int, 
-    #            aes(yintercept = CI_lower))
-    labs(y = paste0(which, ' expression'), 
-         x = 'Ploidy') + 
-    scale_color_manual(values = dosage_colors) + 
-    scale_shape_manual(values = c('Wild-type' = 16, 'Mutated' = 17)) +
-    scale_linetype_manual(values = c('Theoretical expression' = 'dashed')) +
-    scale_fill_manual(values = ci_col) + 
-    ggtitle(gene) + 
-    coord_cartesian(ylim = c(min_expr, #min(df$estimate_expression), 
-                             max_expr)) + 
-    guides(color = guide_legend(title = 'Dosage classes', 
-                                ncol = 3, order = 1, 
-                                title.position = 'top', 
-                                override.aes = list(fill = "white")), 
-           shape = guide_legend(title = 'Mutation status', 
-                                nrow = 2, order = 2,
-                                title.position = 'top', 
-                                override.aes = list(fill = "white")), 
-           linetype = guide_legend(title = '', order = 3, 
-                                   override.aes = list(fill = "white")), 
-           fill = guide_legend(title = 'Confidence interval', 
-                               ncol = 2)) + 
-    theme(legend.position = 'bottom')
+                # linetype = 'dashed',
+                alpha = .6, 
+                color = 'deepskyblue4') + 
+      theme_bw() + 
+      # geom_hline(data = conf_int, 
+      #            aes(yintercept = CI_lower))
+      labs(y = 'Expression', 
+           x = 'Ploidy') + 
+      scale_color_manual(values = dosage_colors) + 
+      scale_shape_manual(values = c('Wild-type' = 16, 'Mutated' = 17)) +
+      scale_linetype_manual(values = c('Theoretical expression' = 'dashed')) +
+      scale_fill_manual(values = ci_col) + 
+      ggtitle(gene) + 
+      coord_cartesian(ylim = c(min_expr, #min(df$estimate_expression), 
+                               max_expr)) + 
+      guides(color = guide_legend(title = 'Dosage classes', 
+                                  order = 1, 
+                                  ncol = 1, 
+                                  title.position = 'top', 
+                                  override.aes = list(fill = "white")), 
+             shape = guide_legend(title = 'Mutation status', 
+                                  nrow = 2, 
+                                  order = 2,
+                                  title.position = 'top', 
+                                  override.aes = list(fill = "white")), 
+             linetype = guide_legend(title = '', 
+                                     order = 3, 
+                                     override.aes = list(fill = "white")), 
+             fill = guide_legend(title = 'Confidence interval', 
+                                 ncol = 2)) + 
+      theme(legend.position = 'right') + 
+      facet_wrap(~Assay, nrow = 2)
+  } else {
+    p = ggplot() +
+      ggtitle(gene)
+  }
   return(p)
 }
 
+# plot proportion of samples with a specific class
+plot_classes_by_gene = function(x, gene, classes_cols) {
+  x = x %>%
+    filter(hgnc_symbol == gene) 
+  if(nrow(x) > 0) {
+    x %>% 
+      pivot_longer(cols = c(prop_prot, prop_rna), names_to = 'assay', values_to = 'prop') %>% 
+      mutate(assay = gsub('prop_', '', assay)) %>% 
+      mutate(assay = factor(assay, levels = c('rna', 'prot'))) %>% 
+      ggplot(aes(x = cls_dosage, y = prop, fill = cls_dosage)) + 
+      geom_bar(stat = 'identity') + 
+      theme_bw() + 
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), 
+            legend.position = 'bottom', 
+            legend.title = element_text(hjust = 0.5, 
+                                        vjust = 0)
+      ) + 
+      xlab('Dosage class') + 
+      ylab('Proportion of genes') +
+      scale_fill_manual(values = classes_cols) + 
+      # scale_fill_manual(values = c('rna' = 'steelblue', 'prot' = 'goldenrod'), 
+      #                   labels = c("rna" = "RNA", "prot" = "Protein")) +
+      guides(fill = guide_legend(
+        title = 'Dosage classes', 
+        ncol = 3, 
+        title.position = 'top'
+      )) + 
+      facet_wrap(~assay, labeller = labeller(assay = c('rna' = 'RNA', 'prot' = 'Protein'))) + 
+      ggtitle(gene)
+  } else {
+      ggplot()
+    }
+}
+
+
+### by cohort ----
+
+# prevalent class distribution
+plot_prevalent_class = function(x, classes_cols, omics_cols) {
+  x %>% 
+    group_by(hgnc_symbol, Assay) %>% 
+    dplyr::slice_max(prop) %>% 
+    dplyr::group_by(cls_dosage, Assay) %>% 
+    count() %>% 
+    ggplot(aes(x = reorder(cls_dosage, +n), y = n, fill = cls_dosage)) + 
+    geom_bar(stat = 'identity') + 
+    scale_fill_manual(values = classes_cols) + 
+    theme_bw() + 
+    light_theme() + 
+    labs(x = 'Dosage classes', y = 'Number of genes', 
+         title = 'Prevalent class') +
+    coord_flip() + 
+    facet_wrap(~Assay) + 
+    # facet_wrap2(~Assay, 
+    #             strip = strip_themed(
+    #               background_x = elem_list_rect(fill = omics_cols, alpha = 0.1)
+    #             )) +
+    guides(fill = guide_legend(title = 'Dosage classes', 
+                               ncol = 4, 
+                               title.position = 'top'))
+}
+
+# samples barplot 
 plot_cls_by_sample = function(x, dosage_colors) {
   x %>% 
     filter(!is.na(sample)) %>% 
@@ -411,19 +569,41 @@ create_annotation = function(x, ann_colors, position) {
   
 }
 
+
+levels_cls_numeric = factor(levels_cls, levels = levels_cls) %>% as.numeric()
+
+ht_colors = setNames(
+  nm = levels_cls_numeric,
+  object = c(
+    '#CBCBCB',
+    '#BF092F', 
+    '#1E5128', 
+    '#3B9797', 
+    '#28518A', 
+    '#5D2F77', 
+    '#C95792', 
+    # '#809D3C',
+    '#5D8736')
+  # object = c('#BF092F', '#001BB7', '#31694E', '#3B9797', '#6B3F69',  '#E195AB', '#84994F', '#CBCBCB')
+)
+
+annotation_colors = list('Assay' = setNames(object = c('steelblue', 'goldenrod'), c('RNA', 'Protein')))
+
 plot_heatmap = function(rna, 
                         prot, 
-                        ann, 
                         genes, 
-                        cols) {
+                        cols = ht_colors,
+                        annotation_colors, 
+                        levels_cls, 
+                        title) {
   
   class_merge = merging_omics(prot_cls = prot, rna_cls = rna)
   x = class_merge %>%
     dplyr::select(hgnc_symbol, sample, cls_dosage_RNA, cls_dosage_Prot)
   
-  levels_cls = c('Dosage_compensating', 'Dosage_sensitive', 'Dosage_insensitive', 
-                 'Haploinsufficient', 'Mutation_sensitive', 'Mutation_insensitive', 
-                 'Control', 'Not_assigned')
+  # levels_cls = c('Not_assigned', 'Dosage_compensating', 'Dosage_sensitive', 'Dosage_insensitive', 
+  #                'Haploinsufficient', 'Mutation_sensitive', 'Mutation_insensitive', 
+  #                'Control')
   
   # wide the data independently and match them after
   
@@ -436,12 +616,27 @@ plot_heatmap = function(rna,
            RNA = as.numeric(cls_dosage_RNA)) %>%
     dplyr::select(-c(starts_with('cls_dosage_'))) %>% 
     dplyr::filter(hgnc_symbol %in% genes) %>% 
-    pivot_wider(names_from = sample, values_from = c(Protein, RNA), values_fill = 0) %>% 
+    pivot_wider(names_from = sample, values_from = c(Protein, RNA), values_fill = 1) %>% 
     tibble::column_to_rownames('hgnc_symbol')
   
-  Heatmap(x_wide)
+  # create annotation 
+  ann_data = tibble(
+    sample = colnames(x_wide)
+  ) %>% 
+    mutate(Assay = str_extract(sample, 'Protein|RNA')) %>% 
+    select(Assay)
   
-  
+  ann_ht = create_annotation(x = ann_data, ann_colors = annotation_colors, position = 'column')
+  ht = Heatmap(x_wide, 
+          col = cols, 
+          name = 'Dosage classes', 
+          bottom_annotation = ann_ht,
+          heatmap_legend_param =
+            list(at = names(cols), labels = levels_cls, direction = "horizontal", nrow = 2), 
+          column_title = title
+          ) 
+  draw(ht, heatmap_legend_side = "bottom", 
+       annotation_legend_side = "bottom")
 }
 
 
@@ -457,6 +652,26 @@ long2wide = function(x, lvs, suffix) {
     pivot_wider(names_from = sample, values_from = class_num) %>% 
     tibble::column_to_rownames('hgnc_symbol')
 }
+
+# further analysis -----
+
+## existing relationships with the mutation type and the classification 
+
+check_corr_mut_type = function(x) {
+  
+  x %>% 
+    pull(cls_dosage) %>% unique
+  
+}
+
+
+
+
+
+
+
+
+
 
 
 # plot_expression_classes = function(x, gene, which) {
@@ -481,49 +696,49 @@ long2wide = function(x, lvs, suffix) {
 #     theme(legend.position = 'bottom')
 # }
 
-# clustering ------------------------
+
 # K means clustering
 
-kmeans_estimates = function(x, seed = 12345, pth = 0.05) {
-  # cluster univariate the genes per each coefficient
-  x = x %>%
-    select(hgnc_symbol, observed_expr, sample) %>%
-    group_by(hgnc_symbol) %>% 
-    # tibble::column_to_rownames('hgnc_symbol') %>% 
-    group_split()
-  names(x) = lapply(x, function(s) s$hgnc_symbol %>% unique)
-  
-  # tidyr::pivot_wider(names_from = term, values_from = estimate, values_fill = 0) %>%
-  
-  
-  
-  k_clus = lapply(x, function(s) {
-    
-    set.seed(seed)
-    
-    tryCatch({
-      
-      data = s %>% 
-        tibble::column_to_rownames('sample') %>% 
-        select(observed_expr)
-      sil_plot = fviz_nbclust(data, FUNcluster = kmeans, method = "silhouette")
-      k = sil_plot@layers$geom_vline$data$xintercept
-      
-      clustering = kmeans(data, k, nstart = 10)
-      
-      clusters = tibble(
-        sample = names(clustering$cluster), 
-        cluster = unname(clustering$cluster)
-      )
-      
-      list(kmeans = clustering, sil_plot = sil_plot, clusters = clusters, data = s)
-    }, 
-    error = function(e) {NA})
-  })
-  
-  return(k_clus)
-  
-}
+# kmeans_estimates = function(x, seed = 12345, pth = 0.05) {
+#   # cluster univariate the genes per each coefficient
+#   x = x %>%
+#     select(hgnc_symbol, observed_expr, sample) %>%
+#     group_by(hgnc_symbol) %>% 
+#     # tibble::column_to_rownames('hgnc_symbol') %>% 
+#     group_split()
+#   names(x) = lapply(x, function(s) s$hgnc_symbol %>% unique)
+#   
+#   # tidyr::pivot_wider(names_from = term, values_from = estimate, values_fill = 0) %>%
+#   
+#   
+#   
+#   k_clus = lapply(x, function(s) {
+#     
+#     set.seed(seed)
+#     
+#     tryCatch({
+#       
+#       data = s %>% 
+#         tibble::column_to_rownames('sample') %>% 
+#         select(observed_expr)
+#       sil_plot = fviz_nbclust(data, FUNcluster = kmeans, method = "silhouette")
+#       k = sil_plot@layers$geom_vline$data$xintercept
+#       
+#       clustering = kmeans(data, k, nstart = 10)
+#       
+#       clusters = tibble(
+#         sample = names(clustering$cluster), 
+#         cluster = unname(clustering$cluster)
+#       )
+#       
+#       list(kmeans = clustering, sil_plot = sil_plot, clusters = clusters, data = s)
+#     }, 
+#     error = function(e) {NA})
+#   })
+#   
+#   return(k_clus)
+#   
+# }
 
 
 # test_expression_groups = function(x, column = 'rna_expression') {
