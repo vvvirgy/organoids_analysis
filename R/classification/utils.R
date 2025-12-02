@@ -24,13 +24,24 @@ compute_expr_mut_allele = function(x, use_2n = TRUE, column) {
   if(use_2n == TRUE) {
     x = x %>% 
       filter(tot_cna != 2 | mutation_status == 'Mutated')
-      # filter(karyotype != '1:1') 
+    # filter(karyotype != '1:1') 
   } else {
     x = x %>% 
       filter(mutation_status == 'Mutated')
   }
   x %>% 
-    mutate(observed_expr = get(column)/tot_cna)
+    mutate(observed_expr = get(column)/tot_cna) %>% 
+    mutate(tot_cna_h1 = tot_cna - multiplicity) %>% 
+    mutate(observed_expr_h1 = get(column)/tot_cna_h1)
+    # mutate(tot_cna_h1 = #case_when(
+    #   # IMPACT %in% c('HIGH', 'MODERATE') ~ 
+    #     tot_cna-multiplicity
+    # ) %>% 
+    # mutate(
+    #   observed_expr_h1 = #case_when(
+    #     # IMPACT %in% c('HIGH', 'MODERATE') ~ 
+    #     get(column)/tot_cna_h1, .default = NA
+      # ))
 }
 
 compute_expectation_expression = function(x, ploidy_seq = seq(2:6)) {
