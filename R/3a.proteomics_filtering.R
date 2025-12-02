@@ -1,6 +1,7 @@
 # prepare proteomics data for fitting 
+rm(list=ls())
 library(tidyverse)
-source('organoids_analysis/R/functions_utils/proteomics_utils.R')
+# source('organoids_analysis/R/functions_utils/proteomics_utils.R')
 source('organoids_analysis/R/functions_utils/fit_plots.R')
 source('organoids_analysis/R/scRNA/cna_comparison_utils.R')
 
@@ -18,10 +19,11 @@ samples_check = new_mapping_experiment %>%
 # genes_cna_status = readRDS('data/karyotypes_full_cohort_cgs.rds')
 
 # load genes with cna associated (only genes in common with transcriptomics)
-to_use = 'muts'
+# to_use = 'muts'
+to_use = 'CCF'
 
 if(to_use == 'CCF') {
-  genes_cna_status = readRDS('data/karyotypes_mutations_all_genes_qc_ccf_v2.rds')
+  genes_cna_status = readRDS('data/karyotypes_mutations_all_genes_qc_ccf_v3.rds')
 } 
 if (to_use == 'muts') {
   genes_cna_status = readRDS('data/karyotypes_mutations_all_genes_qc_only_muts.rds')
@@ -49,7 +51,7 @@ drivers_to_check_correct_samples = filter_fragmented_cnas(genes_cna_status,
 
 if(to_use == 'CCF') {
   drivers_to_check_correct_samples = drivers_to_check_correct_samples %>% 
-    mutate(mutation_multiplicity = ifelse(mut_consequence == 'wild-type', 0, mutation_multiplicity))
+    mutate(multiplicity = ifelse(mut_consequence == 'wild-type', 0, multiplicity))
 } 
 
 # Filter the data to keep only selected genes and prepare the names to be correct 
@@ -63,7 +65,7 @@ proteomic_genes = proteomics_data_norm %>%
   distinct()
 
 proteogenomics_data = drivers_to_check_correct_samples %>%
-  dplyr::select(chr, hgnc_symbol, karyotype, sample, is_mutated, mut_consequence, driver_label, CGC_role_COAD, CGC_role_PANCANCER, is_driver_intogen, any_of('mutation_multiplicity'), IMPACT) %>% 
+  dplyr::select(chr, hgnc_symbol, karyotype, sample, is_mutated, mut_consequence, driver_label, CGC_role_COAD, CGC_role_PANCANCER, is_driver_intogen, any_of(c('multiplicity', 'CCF')), IMPACT) %>% 
   distinct(.keep_all = F) %>% 
   # add correct sample names to map genomics and proteomics
   left_join(., samples_check, by = join_by("sample" == "fixed_name")) %>% 
@@ -86,7 +88,7 @@ proteogenomics_data = drivers_to_check_correct_samples %>%
 #   dplyr::select(everything(), -c(replicate, norm_intensity)) %>%
 #   distinct()
 
-saveRDS(proteogenomics_data, 'data/proteogenomics_data_all_genes_new_norm_v2.rds')
+saveRDS(proteogenomics_data, 'data/proteogenomics_data_all_genes_new_norm_v3.rds')
 
 p_old = proteogenomics_data_v2 %>% 
   filter(hgnc_symbol == 'PIK3CA') %>% 

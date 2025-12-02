@@ -16,8 +16,9 @@ extract_mutational_status = function(x, #cnaqc obj
   
   if(which == 'CCF') {
     
-    ccfs = CNAqc::CCF(x) %>% 
-      dplyr::select(chr, from, to, ref, alt, VAF, all_of(symbol_column), CCF, mutation_multiplicity)
+    ccfs = x$phasing %>% 
+      dplyr::select(chr, from, to, ref, alt, VAF, all_of(symbol_column), CCF, multiplicity) %>% 
+      distinct()
     
     muts = full_join(muts, ccfs, 
                      by = join_by('chr' == 'chr', 
@@ -27,7 +28,7 @@ extract_mutational_status = function(x, #cnaqc obj
                                   'alt' == 'alt', 
                                   'VAF' == 'VAF',  
                                   'VEP.SYMBOL' == 'VEP.SYMBOL')) %>% 
-      dplyr::select(chr, from, to, ref, alt, NV, DP, VAF, all_of(c(symbol_column, consequence_column, impact_column)), driver_label, is_driver, segment_id, QC_PASS, karyotype, mutation_multiplicity, CCF)
+      dplyr::select(chr, from, to, ref, alt, NV, DP, VAF, all_of(c(symbol_column, consequence_column, impact_column)), driver_label, is_driver, segment_id, QC_PASS, karyotype, multiplicity, CCF)
   } else {
       muts = muts %>% 
         dplyr::select(chr, from, to, ref, alt, NV, DP, VAF, all_of(c(symbol_column, consequence_column, impact_column)), driver_label, is_driver, segment_id, QC_PASS, karyotype)

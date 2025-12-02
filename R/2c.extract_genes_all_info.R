@@ -1,8 +1,9 @@
 source('/orfeo/scratch/cdslab/vgazziero/organoids_prj/organoids_analysis/R/preparation/get_cnas_muts.R')
 setwd('/orfeo/scratch/cdslab/vgazziero/organoids_prj')
 
-cnas = readRDS('data/cnaqc/cnas_list_rough_ccf.rds')
-genes_karyo = readRDS('data/karyotypes_all_genes_qc_v2.rds')
+# cnas = readRDS('data/cnaqc/cnas_list_rough_ccf.rds')
+cnas = readRDS('data/cnaqc/cnas_list.rds')
+genes_karyo = readRDS('data/karyotypes_all_genes_qc_v3.rds')
 
 coad_genes = readRDS('data/all_genes_positions_info.rds')
 coad_genes = coad_genes %>% 
@@ -25,7 +26,7 @@ genes_karyo_muts = Filter(function(x) {!is.null(nrow(x))}, genes_karyo_muts)
 genes_karyo_muts = genes_karyo_muts %>% 
   bind_rows()
 
-saveRDS(genes_karyo_muts, 'data/karyotypes_mutations_all_genes_qc_ccf_v2.rds')
+saveRDS(genes_karyo_muts, 'data/karyotypes_mutations_all_genes_qc_ccf_v3.rds')
 
 
 # extract using the mutations and not caring of multiplicity

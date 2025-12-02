@@ -6,18 +6,21 @@ library(gprofiler2)
 library(enrichR)
 
 setwd('/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj')
-cnas = readRDS('data/cnaqc/cnas_list_rough_ccf.rds')
+# cnas = readRDS('data/cnaqc/cnas_list_rough_ccf.rds')
+cnas = readRDS('data/cnaqc/cnas_list.rds')
+
+cnas[[1]]$phasing$is_driver
 
 # using only KRAS mutated samples with associated CCF
 samples_to_use = lapply(cnas, function(x) {
-  CCF(x) %>% 
+  x$phasing %>% 
     dplyr::filter(VEP.SYMBOL == 'KRAS') %>% 
     dplyr::filter(is_driver)
 })
 samples_to_use = samples_to_use[which(sapply(samples_to_use, nrow) > 0)] %>% names
 
 genes_list = lapply(cnas[samples_to_use], function(x) {
-  CCF(x) %>% 
+  x$phasing %>% 
     dplyr::filter(VAF > 0) %>% 
     filter(VEP.SYMBOL != '.') %>% 
     dplyr::select(VEP.SYMBOL, sample) %>% 
@@ -34,10 +37,10 @@ genes_list = lapply(cnas[samples_to_use], function(x) {
 genes_list = genes_list$VEP.SYMBOL
 
 get_gene_multiplicity = function(x, genes) {
-  CNAqc::CCF(x) %>% 
+  x$phasing %>% 
     dplyr::filter(VEP.SYMBOL %in% genes) %>% 
     # dplyr::filter(is_driver) %>% 
-    dplyr::select(chr, from, to, ref, alt, VEP.SYMBOL, VAF, mutation_multiplicity, CCF, karyotype, sample, is_driver)
+    dplyr::select(chr, from, to, ref, alt, VEP.SYMBOL, VAF, multiplicity, CCF, karyotype, sample, is_driver)
 }
 
 # re-do everything using all genes!!!
@@ -61,15 +64,17 @@ drivers = drivers %>%
 # for the other genes --> wild-type is 0, mutated is 1
 
 tests_all_genes = lapply(genes_list, function(x) {
+  print(x)
   df = drivers %>% 
     dplyr::filter(VEP.SYMBOL %in% c(x, 'KRAS')) %>% 
-    dplyr::select(VEP.SYMBOL, mutation_multiplicity, sample) %>% 
+    dplyr::select(VEP.SYMBOL, multiplicity, sample) %>% 
     group_by(VEP.SYMBOL, sample) %>% 
     mutate(mutation_multiplicity = case_when(
-      (VEP.SYMBOL == 'KRAS' & mutation_multiplicity > 1) ~ 'm > 1', 
-      (VEP.SYMBOL == 'KRAS' & mutation_multiplicity == 1) ~ 'm = 1', 
-      (VEP.SYMBOL != 'KRAS' & !is.na(mutation_multiplicity)) ~ 'mutated', 
+      (VEP.SYMBOL == 'KRAS' & multiplicity > 1) ~ 'm > 1', 
+      (VEP.SYMBOL == 'KRAS' & multiplicity == 1) ~ 'm = 1', 
+      (VEP.SYMBOL != 'KRAS' & !is.na(multiplicity)) ~ 'mutated', 
     )) %>% 
+    select(-multiplicity) %>% 
     distinct() %>% 
     tidyr::pivot_wider(names_from = VEP.SYMBOL, values_from = mutation_multiplicity, values_fill = 'wild-type') %>% 
     mutate(!!x := factor(.data[[x]], levels = c('wild-type', 'mutated'))) %>% 
@@ -79,63 +84,108 @@ tests_all_genes = lapply(genes_list, function(x) {
   return(df)
 })
 names(tests_all_genes) = genes_list
-saveRDS(tests_all_genes, 'data/pik3_complexes_mut_status_kras_multiplicity.rds')
+# saveRDS(tests_all_genes, 'data/pik3_complexes_mut_status_kras_multiplicity.rds')
+saveRDS(tests_all_genes, 'data/all_genes_mut_status_kras_multiplicity.rds')
 
-tt = readRDS('data/pik3_complexes_mut_status_kras_multiplicity.rds')
+# tt = readRDS('data/pik3_complexes_mut_status_kras_multiplicity.rds')
 # fisher test
-tests_all_genes = lapply(genes_list, function(x) {
-  form = as.formula(paste0('n ~ KRAS + ', x))
-  print(form)
-  df = drivers %>% 
-    dplyr::filter(VEP.SYMBOL %in% c(x, 'KRAS')) %>% 
-    dplyr::select(VEP.SYMBOL, mutation_multiplicity, sample) %>% 
-    group_by(VEP.SYMBOL, sample) %>% 
-    mutate(mutation_multiplicity = case_when(
-      (VEP.SYMBOL == 'KRAS' & mutation_multiplicity > 1) ~ 'm > 1', 
-      (VEP.SYMBOL == 'KRAS' & mutation_multiplicity == 1) ~ 'm = 1', 
-      (VEP.SYMBOL != 'KRAS' & !is.na(mutation_multiplicity)) ~ 'mutated', 
-    )) %>% 
-    distinct() %>% 
-    tidyr::pivot_wider(names_from = VEP.SYMBOL, values_from = mutation_multiplicity, values_fill = 'wild-type') %>% 
+tests_all_genes[['rRNA_5_8S']] = tests_all_genes[['5_8S_rRNA']] %>% 
+  rename(rRNA_5_8S = "5_8S_rRNA")
+tests_all_genes = tests_all_genes[-which(names(tests_all_genes) == '5_8S_rRNA')]
+
+set.seed(12674392)
+tests_all_genes_res = lapply(tests_all_genes %>% names, function(x) {
+  print(x)
+  form = as.formula(paste0('n ~ KRAS + ', as.character(x)))
+  # print(form)
+  
+  set.seed(12674392)
+  test = tests_all_genes[[x]] %>% 
     group_by(pick(c(x, 'KRAS'))) %>% 
     count() %>% 
-    # dplyr:: mutate(across(all_of(x), ~ factor(.x, levels = c('mutated', 'wild-type'))))
-    mutate(!!x := factor(.data[[x]], levels = c('mutated', 'wild-type'))) %>% 
+    mutate(!!x := ifelse(.data[[x]] == 0, 'wild-type', 'mutated')) %>% 
+    mutate(KRAS = ifelse(KRAS == 0, 'm = 1', 'm > 1')) %>% 
+    mutate(!!x := factor(.data[[x]], levels = c('wild-type', 'mutated'))) %>% 
     mutate(KRAS = factor(KRAS, levels = c('m = 1', 'm > 1'))) %>% 
     xtabs(form, data = ., drop.unused.levels = F) %>% 
-    fisher.test()
+    fisher.test() 
+  return(test)
 })
-  
-names(tests_all_genes) = genes_list
-saveRDS(tests_all_genes, 'data/tests_all_genes_with_kras_multiplicity.rds')
+names(tests_all_genes_res) = names(tests_all_genes)
 
-sign_associations = lapply(tests_all_genes %>% names, function(x){
-  tests_all_genes[[x]] %>% 
+# tests_all_genes = lapply(genes_list, function(x) {
+#   form = as.formula(paste0('n ~ KRAS + ', x))
+#   print(form)
+#   df = drivers %>% 
+#     dplyr::filter(VEP.SYMBOL %in% c(x, 'KRAS')) %>% 
+#     dplyr::select(VEP.SYMBOL, multiplicity, sample) %>% 
+#     group_by(VEP.SYMBOL, sample) %>% 
+#     mutate(mutation_multiplicity = case_when(
+#       (VEP.SYMBOL == 'KRAS' & multiplicity > 1) ~ 'm > 1', 
+#       (VEP.SYMBOL == 'KRAS' & multiplicity == 1) ~ 'm = 1', 
+#       (VEP.SYMBOL != 'KRAS' & !is.na(multiplicity)) ~ 'mutated', 
+#     )) %>% 
+#     select(-multiplicity) %>% 
+#     distinct() %>% 
+#     tidyr::pivot_wider(names_from = VEP.SYMBOL, values_from = mutation_multiplicity, values_fill = 'wild-type') %>% 
+#     group_by(pick(c(x, 'KRAS'))) %>% 
+#     count() %>% 
+#     # dplyr:: mutate(across(all_of(x), ~ factor(.x, levels = c('mutated', 'wild-type'))))
+#     mutate(!!x := factor(.data[[x]], levels = c('mutated', 'wild-type'))) %>% 
+#     mutate(KRAS = factor(KRAS, levels = c('m = 1', 'm > 1'))) %>% 
+#     xtabs(form, data = ., drop.unused.levels = F) %>% 
+#     fisher.test()
+# })
+  
+# names(tests_all_genes) = genes_list
+saveRDS(tests_all_genes_res, 'data/tests_all_genes_with_kras_multiplicity_v2.rds')
+
+pth = 0.05
+
+associations_results = lapply(tests_all_genes_res %>% names, function(x){
+  tests_all_genes_res[[x]] %>% 
     broom::tidy() %>% 
     mutate(gene = x)
 }) %>% 
   bind_rows() %>% 
-  filter(p.value <= 0.05)
+  mutate(significant = ifelse(p.value <= pth, TRUE, FALSE))
 
-sign_associations %>% view()
-write.table(sign_associations, 'res/tests_all_genes_with_kras_multiplicity.csv', sep = ',', quote = F, col.names = T, row.names = F)
+associations_results = associations_results %>% 
+  rename(significant_01 = significant)
+write.table(associations_results, 'res/tests_all_genes_with_kras_multiplicity_v2.csv', sep = ',', quote = F, col.names = T, row.names = F)
 
-genes_sign_associations = sign_associations$gene %>% unique
+associations_results = read.table('res/tests_all_genes_with_kras_multiplicity_v2.csv', sep = ',', header = T)
+associations_results_old = read.table('res/tests_all_genes_with_kras_multiplicity.csv', sep = ',', header = T)
 
-pathways = gprofiler2::gost(genes_sign_associations, 
-                            organism = 'hsapiens', 
-                            ordered_query = F,
-                            multi_query = F,
-                            significant = F,
-                            exclude_iea = T, 
-                            measure_underrepresentation = T, 
-                            evcodes = TRUE, 
-                            correction_method = 'fdr', 
-                            domain_scope = 'annotated', 
-                            sources = c('GO', 'KEGG', 'REAC', 'WP', 'CORUM', 'HP', 'HPA'),
-                            highlight = FALSE
-                            ) 
-pathways$result %>% filter(significant) %>% dim
+pth = .05
+sign_associations_05 =  associations_results %>% 
+  filter(p.value <= pth)
+
+pth = 0.1
+sign_associations_01 =  associations_results %>% 
+  filter(p.value <= pth)
+
+# sign_associations -> sign_associations_05
+# sign_associations %>% view()
+# write.table(sign_associations, 'res/tests_all_genes_with_kras_multiplicity.csv', sep = ',', quote = F, col.names = T, row.names = F)
+
+genes_sign_associations = sign_associations_01$gene %>% unique
+
+genes_sign_associations = sign_associations_05$gene %>% unique
+# pathways = gprofiler2::gost(genes_sign_associations, 
+#                             organism = 'hsapiens', 
+#                             ordered_query = F,
+#                             multi_query = F,
+#                             significant = F,
+#                             exclude_iea = T, 
+#                             measure_underrepresentation = T, 
+#                             evcodes = TRUE, 
+#                             correction_method = 'fdr', 
+#                             domain_scope = 'annotated', 
+#                             sources = c('GO', 'KEGG', 'REAC', 'WP', 'CORUM', 'HP', 'HPA'),
+#                             highlight = FALSE
+#                             ) 
+# pathways$result %>% filter(significant) %>% dim
 
 
 # trying enrichr since gprofiler2 did not give any significant result
@@ -158,10 +208,31 @@ enriched_res <- enrichr(genes_sign_associations, dbs_small)
 enriched_res_all = enriched_res %>% 
   bind_rows()
 
+saveRDS(enriched_res_all, 'res/enriched_res_all_comuts_005.rds')
+write.table(enriched_res_all, 'data/enriched_res_all_all_comuts_005.csv', sep = ',', quote = F, col.names = T, row.names = F)
+
+enriched_res_all = readRDS('res/enriched_res_all_comuts_005.rds')
+
 enriched_res_all %>% filter(P.value <= 0.05) %>% view
 
-plotEnrich(enriched_res_all, showTerms = 40, numChar = 50, 
-           y = "Count", orderBy = "P.value") 
+p = enriched_res_all %>% 
+  tidyr::separate(Overlap, into = c('Gene_count', 'Term_size'), sep = '/')
+
+p %>% 
+  filter(P.value <= 0.05) %>%
+  tidyr::separate(Term, into = c('Term', 'ID'), sep = ' \\(') %>% 
+  ggplot(aes(y = Gene_count, x = reorder(Term, +P.value), fill = P.value)) + 
+  geom_bar(stat = 'identity') + 
+  # theme(axis.text.x = )
+  coord_flip() + 
+  ggsci::scale_fill_bs5("cyan") +
+  theme_bw() +
+  labs(x = 'Term', y = 'Gene counts')
+ggsave('res/enriched_terms_comut_kras.png', width = 8, height = 10)
+ggsave('res/enriched_terms_comut_kras.pdf', width = 8, height = 10)
+
+# plotEnrich(enriched_res_all, showTerms = 40, numChar = 50, 
+#            y = "Count", orderBy = "P.value") 
 
 enriched_res_all %>% 
   filter(P.value <= 0.05) %>% 

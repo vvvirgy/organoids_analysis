@@ -23,10 +23,10 @@ all_samples_dict = full_join(matching_samples, new_mapping_experiment,
 normalized_res = readRDS('data/normalized_res_pseudobulk_v2.rds')
 
 # load genes with cna associated (only genes in common with transcriptomics)
-to_use = 'muts'
+to_use = 'CCF'
 
 if(to_use == 'CCF') {
-  genes_cna_status = readRDS('data/karyotypes_mutations_all_genes_qc_ccf_v2.rds')
+  genes_cna_status = readRDS('data/karyotypes_mutations_all_genes_qc_ccf_v3.rds')
 } 
 if (to_use == 'muts') {
   genes_cna_status = readRDS('data/karyotypes_mutations_all_genes_qc_only_muts.rds')
@@ -57,7 +57,7 @@ drivers_to_check_correct_samples = filter_fragmented_cnas(genes_cna_status,
 
 if(to_use == 'CCF') {
   drivers_to_check_correct_samples = drivers_to_check_correct_samples %>% 
-    mutate(mutation_multiplicity = ifelse(mut_consequence == 'wild-type', 0, mutation_multiplicity))
+    mutate(multiplicity = ifelse(mut_consequence == 'wild-type', 0, multiplicity))
 } 
 
 # Filter the data to keep only selected genes and prepare the names to be correct 
@@ -72,7 +72,7 @@ expression_genes = normalized_res %>%
 # dplyr::rename(replicate = variable)
 
 transcriptomics_data = drivers_to_check_correct_samples %>%
-  dplyr::select(chr, hgnc_symbol, karyotype, sample, is_mutated, mut_consequence, driver_label, CGC_role_COAD, CGC_role_PANCANCER, is_driver_intogen, any_of('mutation_multiplicity'), IMPACT) %>% 
+  dplyr::select(chr, hgnc_symbol, karyotype, sample, is_mutated, mut_consequence, driver_label, CGC_role_COAD, CGC_role_PANCANCER, is_driver_intogen, any_of(c('multiplicity', 'CCF')), IMPACT) %>% 
   distinct(.keep_all = F) %>% 
   # add correct sample names to map genomics and proteomics
   left_join(., samples_check, by = join_by("sample" == "fixed_name")) %>% 
@@ -87,7 +87,7 @@ transcriptomics_data = drivers_to_check_correct_samples %>%
   dplyr::filter(!is.na(value)) %>% 
   dplyr::mutate(karyotype = paste(Major, minor, sep = ':'))
 
-saveRDS(transcriptomics_data, 'data/transcriptomics_data_all_genes_v3.rds')
+saveRDS(transcriptomics_data, 'data/transcriptomics_data_all_genes_v4.rds')
 
 # old_data = readRDS('data/transcriptomics_data_all_genes.rds')
 # 

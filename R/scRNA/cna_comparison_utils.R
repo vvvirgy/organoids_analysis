@@ -95,7 +95,7 @@ filter_fragmented_cnas = function(x,
       return(pos)
     })
     
-    x = lapply(names(multiple_segments), function(tt) {
+    test = lapply(names(multiple_segments), function(tt) {
       
       df = x %>% 
         dplyr::filter(sample == tt) %>% 
@@ -135,7 +135,7 @@ filter_fragmented_cnas = function(x,
   
 }
 
-
+############################################################
 
 extract_lm_per_gene = function(genes_cna, formula) {
   
