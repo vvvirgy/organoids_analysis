@@ -203,42 +203,78 @@ plot_single_allele_expr = function(df, gene) {
 # }
 
 # classification
-classify_elements = function(x) {
-  x %>%
-    mutate(
-      side = case_when(
-        (significant == TRUE & z < 0) ~ 'lower',
-        (significant == TRUE & z > 0) ~ 'higher',
-        .default = NA
-      )
-    ) %>% 
-    mutate(cls_dosage = 
-             case_when(
-               (tot_cna != 2 & significant == FALSE) ~ 'Dose_sensitive',
-               
-               (tot_cna == 1 & side == 'higher') ~ 'Dosage_compensating',
-               (tot_cna == 1 & side == 'lower') ~ 'Haploinsufficient',
-               
-               (tot_cna == 2 & side == 'lower' & mutation_status == 'Mutated') ~ 'Haploinsufficient',
-               (tot_cna == 2 & side == 'higher' & mutation_status == 'Mutated') ~ 'Mutation_sensitive',
-               (tot_cna == 2 & significant == FALSE & mutation_status == 'Mutated') ~ 'Mutation_insensitive',
-               # (tot_cna == 2 & significant == FALSE & mutation_status == 'Mutated') ~ 'Mutation_insensitive',
-               
-               (tot_cna == 3 & side == 'lower') ~ 'Dosage_insensitive',
-               (tot_cna == 3 & side == 'higher') ~ 'Super_dosage_sensitive',
-               (tot_cna == 4 & side == 'lower') ~ 'Dosage_insensitive',
-               (tot_cna == 4 & side == 'higher') ~ 'Super_dosage_sensitive'
+# classify_elements = function(x) {
+#   x %>%
+#     mutate(
+#       side = case_when(
+#         (significant == TRUE & z < 0) ~ 'lower',
+#         (significant == TRUE & z > 0) ~ 'higher',
+#         .default = NA
+#       )
+#     ) %>% 
+#     mutate(cls_dosage = 
+#              case_when(
+#                (tot_cna != 2 & significant == FALSE) ~ 'Dose_sensitive',
+#                
+#                (tot_cna == 1 & side == 'higher') ~ 'Dosage_compensating',
+#                (tot_cna == 1 & side == 'lower') ~ 'Haploinsufficient',
+#                
+#                (tot_cna == 2 & side == 'lower' & mutation_status == 'Mutated') ~ 'Haploinsufficient',
+#                (tot_cna == 2 & side == 'higher' & mutation_status == 'Mutated') ~ 'Mutation_sensitive',
+#                (tot_cna == 2 & significant == FALSE & mutation_status == 'Mutated') ~ 'Mutation_insensitive',
+#                # (tot_cna == 2 & significant == FALSE & mutation_status == 'Mutated') ~ 'Mutation_insensitive',
+#                
+#                (tot_cna == 3 & side == 'lower') ~ 'Dosage_insensitive',
+#                (tot_cna == 3 & side == 'higher') ~ 'Super_dosage_sensitive',
+#                (tot_cna == 4 & side == 'lower') ~ 'Dosage_insensitive',
+#                (tot_cna == 4 & side == 'higher') ~ 'Super_dosage_sensitive'
+# 
+#                # (tot_cna == 2 & significant == TRUE & mutation_status == 'Mutated') ~ 'Mutation_sensitive',
+#                # significant == FALSE ~ 'Dosage_sensitive', 
+#                # (tot_cna == 1 & side == 'higher') ~ 'Dosage_compensating',
+#                # (tot_cna == 1 & side == 'lower' & mutation_status == 'Mutated') ~ 'Haploinsufficient',
+#                # (tot_cna == 2 & side == 'lower' & mutation_status == 'Mutated') ~ 'Haploinsufficient',
+#                # (tot_cna == 2 & side == 'lower' & mutation_status == 'Mutated') ~ 'Haploinsufficient',
+#                
+#              )
+#            
+#            ) 
+# }
 
-               # (tot_cna == 2 & significant == TRUE & mutation_status == 'Mutated') ~ 'Mutation_sensitive',
-               # significant == FALSE ~ 'Dosage_sensitive', 
-               # (tot_cna == 1 & side == 'higher') ~ 'Dosage_compensating',
-               # (tot_cna == 1 & side == 'lower' & mutation_status == 'Mutated') ~ 'Haploinsufficient',
-               # (tot_cna == 2 & side == 'lower' & mutation_status == 'Mutated') ~ 'Haploinsufficient',
-               # (tot_cna == 2 & side == 'lower' & mutation_status == 'Mutated') ~ 'Haploinsufficient',
-               
-             )
-           
-           ) 
+classify_elements = function(x, pth = 0.05) {
+  
+  # first checking mutations w/out high impact and wild type --> classified wrt the theoretical rect only
+  group1 = x %>% 
+    filter(is.na(p_value_h1))
+  
+  group1 = group1 %>% 
+    mutate(class = case_when(
+      (tot_cna != 2 & p_value > pth) ~ 'Dose sensitive (no mutations/low impact mutation)', 
+      (tot_cna == 2 & mutation_status == 'Mutated' & p_value > pth) ~ 'Dose sensitive (no mutations/low impact mutation)', 
+      (tot_cna != 2 & p_value <= pth & z > 0) ~ 'Enhanced expression (no mutations/low impact mutations)',
+      (tot_cna != 2 & p_value <= pth & z < 0) ~ 'Reduced expression (no mutations/low impact mutations)',
+      (mutation_status == 'Mutated' & p_value <= pth & z > 0) ~ 'Enhanced expression (no mutations/low impact mutations)',
+      (mutation_status == 'Mutated' & p_value <= pth & z < 0) ~ 'Reduced expression (no mutations/low impact mutations)',
+      (tot_cna == 2 & mutation_status == 'Wild-type') ~ 'Control', 
+      .default = 'Not classified'
+    ))
+  
+  group2 = x %>% 
+    filter(!is.na(p_value_h1))
+  
+  group2 = group2 %>% 
+    mutate(class = case_when(
+      (p_value > pth & p_value_h1 <= pth) ~ 'Enhanced expression (with impactful mutation)', 
+      (p_value <= pth & p_value_h1 > pth) ~ 'Dose sensitive (with impactful mutation)', 
+      (p_value <= pth & p_value_h1 <= pth & z_h1 > 0 & z > 0) ~ 'Super-enhanced expression (with impactful mutation)', 
+      (p_value <= pth & p_value_h1 <= pth & z_h1 < 0 & z < 0) ~ 'Higly reduced expression (with impactful mutation)', 
+      (p_value <= pth & p_value_h1 <= pth & z_h1 > 0 & z < 0) ~ 'Buffering expression (with impactful mutation)', 
+      .default = 'Not classified'
+    ))
+  
+  bind_rows(group1, group2) %>% 
+    arrange(hgnc_symbol)
+  
 }
 
 # Summary statistics getters -------------------------------------------------------------------------------------------
@@ -249,14 +285,14 @@ get_props = function(x, group, filter = TRUE) {
   
   if(filter == TRUE) {
     x = x %>% 
-      filter(!is.na(cls_dosage))
+      filter(!is.na(class))
   }
   
   x %>%
-    mutate(cls_dosage = ifelse(is.na(cls_dosage), 'Not_assigned', cls_dosage)) %>% 
+    mutate(cls_dosage = ifelse(is.na(class), 'Not_assigned', class)) %>% 
     # mutate(cls_dosage = ifelse((mutation_status == 'Wild-type' & tot_cna == 2), 'Control', cls_dosage)) %>% 
     group_by(pick(group)) %>% 
-    count(cls_dosage) %>% 
+    count(class) %>% 
     mutate(tot = sum(n)) %>% 
     mutate(prop = n/tot)
 }
@@ -265,9 +301,9 @@ get_props = function(x, group, filter = TRUE) {
 merging_omics = function(rna_cls, prot_cls) {
   
   rna_cls = rna_cls %>% 
-    dplyr::select(hgnc_symbol, mut_consequence, sample, tot_cna, mutation_status, cls_dosage, alteration)
+    dplyr::select(hgnc_symbol, mut_consequence, sample, tot_cna, mutation_status, class, alteration)
   prot_cls = prot_cls %>% 
-    dplyr::select(hgnc_symbol, mut_consequence, sample, tot_cna, mutation_status, cls_dosage, alteration)
+    dplyr::select(hgnc_symbol, mut_consequence, sample, tot_cna, mutation_status, class, alteration)
   
   x = full_join(rna_cls, prot_cls, by = join_by(
     'hgnc_symbol' == 'hgnc_symbol', 
@@ -281,10 +317,10 @@ merging_omics = function(rna_cls, prot_cls) {
   
   x = x %>% 
     mutate(cls_comparison = case_when(
-      cls_dosage_RNA == cls_dosage_Prot ~ 'Same class', 
-      cls_dosage_RNA != cls_dosage_Prot ~ 'Different classes',
-      (is.na(cls_dosage_RNA) & !is.na(cls_dosage_Prot)) ~ 'Only protein', 
-      (!is.na(cls_dosage_RNA) & is.na(cls_dosage_Prot)) ~ 'Only RNA'
+      class_RNA == class_Prot ~ 'Same class', 
+      class_RNA != class_Prot ~ 'Different classes',
+      (is.na(class_RNA) & !is.na(class_Prot)) ~ 'Only protein', 
+      (!is.na(class_RNA) & is.na(class_Prot)) ~ 'Only RNA'
     ))
 }
 
@@ -293,22 +329,22 @@ merging_omics = function(rna_cls, prot_cls) {
 get_prevalent_class = function(x, filter = TRUE) {
   if(filter == TRUE) {
     x = x %>% 
-      filter(!is.na(cls_dosage))}
+      filter(!is.na(class))}
   x %>% 
-    filter(cls_dosage != 'Control') %>% 
+    filter(class != 'Control') %>% 
     group_by(hgnc_symbol) %>% 
-    count(cls_dosage) %>% 
+    count(class) %>% 
     mutate(prop = n/sum(n)) 
 }
 
 get_prevalent_class_for_gene_type = function(x, filter = TRUE) {
   if(filter == TRUE) {
     x = x %>% 
-      filter(!is.na(cls_dosage))}
+      filter(!is.na(class))}
   x %>% 
-    filter(cls_dosage != 'Control') %>% 
+    filter(class != 'Control') %>% 
     group_by(hgnc_symbol) %>% 
-    count(cls_dosage) %>% 
+    count(class) %>% 
     mutate(prop = n/sum(n)) 
 }
 
@@ -336,20 +372,22 @@ alt_colors = setNames(
 omics_cols = setNames(object = c('steelblue', 'goldenrod'), c('RNA', 'Protein'))
 
 # classes 
-levels_cls = c('Not_assigned', 'Dosage_compensating', 'Dosage_sensitive', 'Dosage_insensitive', 
-               'Haploinsufficient', 'Mutation_sensitive', 'Mutation_insensitive', 
-               'Control')
+# levels_cls = c('Not_assigned', 'Dosage_compensating', 'Dosage_sensitive', 'Dosage_insensitive', 
+#                'Haploinsufficient', 'Mutation_sensitive', 'Mutation_insensitive', 
+#                'Control')
 
 dosage_colors = setNames(
   nm = c(
-    'Not_assigned',
-    'Dosage_sensitive', 
-    'Dosage_compensating', 
-    'Dosage_insensitive', 
-    'Haploinsufficient', 
-    'Mutation_sensitive', 
-    'Mutation_insensitive', 
-    'Control'
+    'Control',
+    'Enhanced expression (with impactful mutation)', 
+    'Super-enhanced expression (with impactful mutation)',
+    'Enhanced expression (no mutations/low impact mutations)', 
+    'Dose sensitive (no mutations/low impact mutation)', 
+    'Dose sensitive (with impactful mutation)', 
+    'Reduced expression (no mutations/low impact mutations)', 
+    'Higly reduced expression (with impactful mutation)', 
+    'Buffering expression (with impactful mutation)', 
+    'Not classified'
     ), 
   # object = c(
   #   '#BF092F', 
@@ -362,17 +400,21 @@ dosage_colors = setNames(
   #   '#809D3C',
   #   '#CBCBCB')
   object = c(
-    '#CBCBCB',
-    '#BF092F', 
-    '#1E5128', 
+    '#5D8736', 
+    '#FF2929',
+    '#8C1007', 
+    '#E82561', 
+    '#FAB12F', 
+    '#EA7300',
     '#3B9797', 
     '#28518A', 
     '#5D2F77', 
-    '#C95792', 
     # '#809D3C',
-    '#5D8736'
+    '#CBCBCB'
     )
 )
+
+levels_cls = names(dosage_colors)
 # 
 # cols = c(
 #   '#BF092F', 
@@ -390,11 +432,11 @@ dosage_colors = setNames(
 
 ### by gene ----
 
-plot_expr_gene_by_cls = function(x, gene, which, ploidy_seq = seq(2:6)) {
+plot_expr_gene_by_cls = function(x, gene,ploidy_seq = seq(2:6), color_by_classes = TRUE, filter_wt = TRUE) {
   df = x %>% 
     filter(hgnc_symbol == gene) %>% 
     # mutate(tot_cna = factor(tot_cna)) %>% 
-    filter(!is.na(cls_dosage)) %>% 
+    # filter(!is.na(cls_dosage)) %>% 
     filter(!is.na(mutation_status)) 
   
   if(nrow(df) > 2) {
@@ -418,12 +460,39 @@ plot_expr_gene_by_cls = function(x, gene, which, ploidy_seq = seq(2:6)) {
     
     ci_col = setNames(nm = conf_int$CI %>% unique, object = 'lightskyblue')
     
-    p = df %>% 
-      # mutate(theoric = 'Theoretical expression') %>% 
-      ggplot(aes(x = tot_cna, 
-                 y = expression, 
-                 color = cls_dosage, 
-                 shape = mutation_status)) + 
+    if(filter_wt == TRUE) {
+      df = df %>% 
+        filter(mutation_status == 'Wild-type')
+    }
+    
+    if (color_by_classes == TRUE) {
+      p = df %>% 
+        filter(!is.na(class)) %>% 
+        # mutate(theoric = 'Theoretical expression') %>% 
+        ggplot(aes(x = tot_cna, 
+                   y = expression, 
+                   color = class, 
+                   shape = mutation_status)) + 
+        geom_point(size = 3) + 
+        scale_color_manual(values = dosage_colors) + 
+        guides(color = guide_legend(title = 'Dosage classes', 
+                                    order = 1, 
+                                    ncol = 1, 
+                                    title.position = 'top', 
+                                    override.aes = list(fill = "white")))
+      
+    } else {
+      p = df %>% 
+        # mutate(theoric = 'Theoretical expression') %>% 
+        ggplot(aes(x = tot_cna, 
+                   y = expression, 
+                   shape = mutation_status)) + 
+        geom_point(size = 3)
+    }
+    
+    title_p = paste0(gene, ' (', df$CGC_role_PANCANCER, ')')
+    
+    p = p + 
       geom_ribbon(data = conf_int, 
                   aes(
                     x = ploidy,
@@ -435,7 +504,7 @@ plot_expr_gene_by_cls = function(x, gene, which, ploidy_seq = seq(2:6)) {
                   alpha = 0.3, 
                   # fill = 'lightskyblue', 
                   show.legend = T) + 
-      geom_point(size = 3) + 
+      
       geom_line(data = conf_int,
                 aes(y = theorical_expression, 
                     x = ploidy,
@@ -450,33 +519,28 @@ plot_expr_gene_by_cls = function(x, gene, which, ploidy_seq = seq(2:6)) {
       #            aes(yintercept = CI_lower))
       labs(y = 'Expression', 
            x = 'Ploidy') + 
-      scale_color_manual(values = dosage_colors) + 
       scale_shape_manual(values = c('Wild-type' = 16, 'Mutated' = 17)) +
       scale_linetype_manual(values = c('Theoretical expression' = 'dashed')) +
       scale_fill_manual(values = ci_col) + 
-      ggtitle(gene) + 
+      ggtitle(title_p) + 
       coord_cartesian(ylim = c(min_expr, #min(df$estimate_expression), 
                                max_expr)) + 
-      guides(color = guide_legend(title = 'Dosage classes', 
-                                  order = 1, 
-                                  ncol = 1, 
-                                  title.position = 'top', 
-                                  override.aes = list(fill = "white")), 
-             shape = guide_legend(title = 'Mutation status', 
-                                  nrow = 2, 
-                                  order = 2,
-                                  title.position = 'top', 
-                                  override.aes = list(fill = "white")), 
-             linetype = guide_legend(title = '', 
-                                     order = 3, 
-                                     override.aes = list(fill = "white")), 
-             fill = guide_legend(title = 'Confidence interval', 
-                                 ncol = 2)) + 
+      guides(
+        shape = guide_legend(title = 'Mutation status', 
+                             nrow = 2, 
+                             order = 2,
+                             title.position = 'top', 
+                             override.aes = list(fill = "white")), 
+        linetype = guide_legend(title = '', 
+                                order = 3, 
+                                override.aes = list(fill = "white")), 
+        fill = guide_legend(title = 'Confidence interval', 
+                            ncol = 2)) + 
       theme(legend.position = 'right') + 
       facet_wrap(~Assay, nrow = 2)
   } else {
     p = ggplot() +
-      ggtitle(gene)
+      ggtitle(title_p)
   }
   return(p)
 }
@@ -490,7 +554,7 @@ plot_classes_by_gene = function(x, gene, classes_cols) {
       pivot_longer(cols = c(prop_prot, prop_rna), names_to = 'assay', values_to = 'prop') %>% 
       mutate(assay = gsub('prop_', '', assay)) %>% 
       mutate(assay = factor(assay, levels = c('rna', 'prot'))) %>% 
-      ggplot(aes(x = cls_dosage, y = prop, fill = cls_dosage)) + 
+      ggplot(aes(x = class, y = prop, fill = class)) + 
       geom_bar(stat = 'identity') + 
       theme_bw() + 
       theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), 
@@ -523,9 +587,9 @@ plot_prevalent_class = function(x, classes_cols, omics_cols) {
   x %>% 
     group_by(hgnc_symbol, Assay) %>% 
     dplyr::slice_max(prop) %>% 
-    dplyr::group_by(cls_dosage, Assay) %>% 
+    dplyr::group_by(class, Assay) %>% 
     count() %>% 
-    ggplot(aes(x = reorder(cls_dosage, +n), y = n, fill = cls_dosage)) + 
+    ggplot(aes(x = reorder(class, +n), y = n, fill = class)) + 
     geom_bar(stat = 'identity') + 
     scale_fill_manual(values = classes_cols) + 
     theme_bw() + 
@@ -539,7 +603,7 @@ plot_prevalent_class = function(x, classes_cols, omics_cols) {
     #               background_x = elem_list_rect(fill = omics_cols, alpha = 0.1)
     #             )) +
     guides(fill = guide_legend(title = 'Dosage classes', 
-                               ncol = 4, 
+                               ncol = 3, 
                                title.position = 'top'))
 }
 
@@ -551,7 +615,7 @@ plot_cls_by_sample = function(x, dosage_colors) {
     mutate(Assay = gsub('prop_', '', Assay)) %>% 
     mutate(Assay = factor(Assay, levels = c('rna', 'prot'))) %>% 
     ggplot(aes(
-      y = sample, x = prop, fill = cls_dosage
+      y = sample, x = prop, fill = class
     )) + 
     geom_bar(stat = 'identity', position = 'stack') + 
     theme_bw() + 
@@ -564,7 +628,7 @@ plot_cls_by_sample = function(x, dosage_colors) {
     labs(y = 'Sample', 
          x = 'Genes proportions') +
     guides(fill = guide_legend(title = 'Dosage classes', 
-                                ncol = 4, order = 1, 
+                                ncol = 3, order = 1, 
                                 title.position = 'top')) +
     theme(legend.position = 'bottom', legend.title = element_text(hjust = 0.5))
     
@@ -583,21 +647,25 @@ create_annotation = function(x, ann_colors, position) {
 
 levels_cls_numeric = factor(levels_cls, levels = levels_cls) %>% as.numeric()
 
-ht_colors = setNames(
-  nm = levels_cls_numeric,
-  object = c(
-    '#CBCBCB',
-    '#BF092F', 
-    '#1E5128', 
-    '#3B9797', 
-    '#28518A', 
-    '#5D2F77', 
-    '#C95792', 
-    # '#809D3C',
-    '#5D8736')
-  # object = c('#BF092F', '#001BB7', '#31694E', '#3B9797', '#6B3F69',  '#E195AB', '#84994F', '#CBCBCB')
-)
+# ht_colors = setNames(
+#   nm = levels_cls_numeric,
+#   object = c(
+#     '#CBCBCB',
+#     '#BF092F', 
+#     '#1E5128', 
+#     '#3B9797', 
+#     '#28518A', 
+#     '#5D2F77', 
+#     '#C95792', 
+#     # '#809D3C',
+#     '#5D8736')
+#   # object = c('#BF092F', '#001BB7', '#31694E', '#3B9797', '#6B3F69',  '#E195AB', '#84994F', '#CBCBCB')
+# )
 
+ht_colors = setNames(
+  nm = levels_cls_numeric, 
+  object = dosage_colors %>% unname()
+)
 annotation_colors = list('Assay' = setNames(object = c('steelblue', 'goldenrod'), c('RNA', 'Protein')))
 
 plot_heatmap = function(rna, 
@@ -610,7 +678,7 @@ plot_heatmap = function(rna,
   
   class_merge = merging_omics(prot_cls = prot, rna_cls = rna)
   x = class_merge %>%
-    dplyr::select(hgnc_symbol, sample, cls_dosage_RNA, cls_dosage_Prot)
+    dplyr::select(hgnc_symbol, sample, class_RNA, class_Prot)
   
   # levels_cls = c('Not_assigned', 'Dosage_compensating', 'Dosage_sensitive', 'Dosage_insensitive', 
   #                'Haploinsufficient', 'Mutation_sensitive', 'Mutation_insensitive', 
@@ -619,13 +687,13 @@ plot_heatmap = function(rna,
   # wide the data independently and match them after
   
   x_wide = x %>% 
-    mutate(cls_dosage_RNA = ifelse(is.na(cls_dosage_RNA), 'Not_assigned', cls_dosage_RNA)) %>%
-    mutate(cls_dosage_Prot = ifelse(is.na(cls_dosage_Prot), 'Not_assigned', cls_dosage_Prot)) %>%
-    mutate(cls_dosage_RNA = factor(cls_dosage_RNA, levels = levels_cls))  %>%
-    mutate(cls_dosage_Prot = factor(cls_dosage_Prot, levels = levels_cls))  %>%
-    mutate(Protein = as.numeric(cls_dosage_Prot),
-           RNA = as.numeric(cls_dosage_RNA)) %>%
-    dplyr::select(-c(starts_with('cls_dosage_'))) %>% 
+    mutate(class_RNA = ifelse(is.na(class_RNA), 'Not_assigned', class_RNA)) %>%
+    mutate(class_Prot = ifelse(is.na(class_Prot), 'Not_assigned', class_Prot)) %>%
+    mutate(class_RNA = factor(class_RNA, levels = levels_cls))  %>%
+    mutate(class_Prot = factor(class_Prot, levels = levels_cls))  %>%
+    mutate(Protein = as.numeric(class_Prot),
+           RNA = as.numeric(class_RNA)) %>%
+    dplyr::select(-c(starts_with('class_'))) %>% 
     dplyr::filter(hgnc_symbol %in% genes) %>% 
     pivot_wider(names_from = sample, values_from = c(Protein, RNA), values_fill = 1) %>% 
     tibble::column_to_rownames('hgnc_symbol')
@@ -642,10 +710,10 @@ plot_heatmap = function(rna,
           col = cols, 
           name = 'Dosage classes', 
           bottom_annotation = ann_ht,
+          column_title = title,
           heatmap_legend_param =
-            list(at = names(cols), labels = levels_cls, direction = "horizontal", nrow = 2), 
-          column_title = title
-          ) 
+            list(at = names(cols), labels = levels_cls, direction = "horizontal", nrow = 3))
+          
   draw(ht, heatmap_legend_side = "bottom", 
        annotation_legend_side = "bottom")
 }

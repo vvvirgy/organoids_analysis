@@ -88,8 +88,10 @@ dds <- DESeqDataSetFromMatrix(countData = counts(expr_set),
 dds <- DESeq(dds)
 
 # get normalized vst data
-normalized_res = assay(vst(dds, blind = FALSE))
-saveRDS(normalized_res, 'data/normalized_res_pseudobulk_v2.rds')
+# normalized_res = assay(vst(dds, blind = FALSE))
+normalized_res = counts(dds,normalized=TRUE)
+# saveRDS(normalized_res, 'data/normalized_res_pseudobulk_v2.rds')
+saveRDS(normalized_res, 'data/normalized_res_pseudobulk_counts.rds')
 
 new_mapping_experiment = readRDS("data/mapping_samples.rds")
 all_genes = rownames(normalized_res) %>% unique

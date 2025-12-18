@@ -12,7 +12,7 @@ source('organoids_analysis/R/functions_utils/scRNA_utils.R')
 
 # load data as a list and name it 
 data_path = 'data/scRNA'
-data = lapply(list.files(data_path, full.names = T), function(x) {
+data = lapply(list.files(data_path, full.names = T, pattern = 'PDO45'), function(x) {
   readRDS(x)
 })
 

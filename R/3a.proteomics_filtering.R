@@ -23,7 +23,7 @@ samples_check = new_mapping_experiment %>%
 to_use = 'CCF'
 
 if(to_use == 'CCF') {
-  genes_cna_status = readRDS('data/karyotypes_mutations_all_genes_qc_ccf_v3.rds')
+  genes_cna_status = readRDS('data/karyotypes_mutations_all_genes_qc_ccf_v4.rds')
 } 
 if (to_use == 'muts') {
   genes_cna_status = readRDS('data/karyotypes_mutations_all_genes_qc_only_muts.rds')
@@ -65,7 +65,7 @@ proteomic_genes = proteomics_data_norm %>%
   distinct()
 
 proteogenomics_data = drivers_to_check_correct_samples %>%
-  dplyr::select(chr, hgnc_symbol, karyotype, sample, is_mutated, mut_consequence, driver_label, CGC_role_COAD, CGC_role_PANCANCER, is_driver_intogen, any_of(c('multiplicity', 'CCF')), IMPACT) %>% 
+  dplyr::select(chr, hgnc_symbol, karyotype, sample, is_mutated, mut_consequence, driver_label, CGC_role_COAD, CGC_role_PANCANCER, is_driver_intogen, Polyphen_class, any_of(c('multiplicity', 'CCF')), IMPACT) %>% 
   distinct(.keep_all = F) %>% 
   # add correct sample names to map genomics and proteomics
   left_join(., samples_check, by = join_by("sample" == "fixed_name")) %>% 
@@ -88,7 +88,7 @@ proteogenomics_data = drivers_to_check_correct_samples %>%
 #   dplyr::select(everything(), -c(replicate, norm_intensity)) %>%
 #   distinct()
 
-saveRDS(proteogenomics_data, 'data/proteogenomics_data_all_genes_new_norm_v3.rds')
+saveRDS(proteogenomics_data, 'data/proteogenomics_data_all_genes_new_norm_v4.rds')
 
 p_old = proteogenomics_data_v2 %>% 
   filter(hgnc_symbol == 'PIK3CA') %>% 
