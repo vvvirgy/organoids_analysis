@@ -20,13 +20,13 @@ all_samples_dict = full_join(matching_samples, new_mapping_experiment,
                                           'fixed_name' == 'fixed_name'), na_matches = 'na')
 # saveRDS(all_samples_dict, 'data/samples_names_dictionary.rds')
 
-normalized_res = readRDS('data/normalized_res_pseudobulk_v2.rds')
+normalized_res = readRDS('data/normalized_res_pseudobulk_counts.rds')
 
 # load genes with cna associated (only genes in common with transcriptomics)
 to_use = 'CCF'
 
 if(to_use == 'CCF') {
-  genes_cna_status = readRDS('data/karyotypes_mutations_all_genes_qc_ccf_v3.rds')
+  genes_cna_status = readRDS('data/karyotypes_mutations_all_genes_qc_ccf_v4.rds')
 } 
 if (to_use == 'muts') {
   genes_cna_status = readRDS('data/karyotypes_mutations_all_genes_qc_only_muts.rds')
@@ -72,7 +72,7 @@ expression_genes = normalized_res %>%
 # dplyr::rename(replicate = variable)
 
 transcriptomics_data = drivers_to_check_correct_samples %>%
-  dplyr::select(chr, hgnc_symbol, karyotype, sample, is_mutated, mut_consequence, driver_label, CGC_role_COAD, CGC_role_PANCANCER, is_driver_intogen, any_of(c('multiplicity', 'CCF')), IMPACT) %>% 
+  dplyr::select(chr, hgnc_symbol, karyotype, sample, is_mutated, mut_consequence, driver_label, CGC_role_COAD, CGC_role_PANCANCER, Polyphen_class, is_driver_intogen, any_of(c('multiplicity', 'CCF')), IMPACT) %>% 
   distinct(.keep_all = F) %>% 
   # add correct sample names to map genomics and proteomics
   left_join(., samples_check, by = join_by("sample" == "fixed_name")) %>% 
@@ -87,7 +87,7 @@ transcriptomics_data = drivers_to_check_correct_samples %>%
   dplyr::filter(!is.na(value)) %>% 
   dplyr::mutate(karyotype = paste(Major, minor, sep = ':'))
 
-saveRDS(transcriptomics_data, 'data/transcriptomics_data_all_genes_v4.rds')
+saveRDS(transcriptomics_data, 'data/transcriptomics_data_all_genes_v5.rds')
 
 # old_data = readRDS('data/transcriptomics_data_all_genes.rds')
 # 

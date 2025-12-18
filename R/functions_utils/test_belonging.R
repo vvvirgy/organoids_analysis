@@ -52,7 +52,8 @@ test_belonging_alterations = function(x,
         ) 
       
       mut_test = alt_test %>% 
-        dplyr::filter(IMPACT %in% c('HIGH', 'MODERATE')) %>% 
+        # dplyr::filter(IMPACT %in% c('HIGH', 'MODERATE')) %>% 
+        dplyr::filter(score >= 0.446 | IMPACT %in% c('HIGH', 'MODERATE')) %>% 
         mutate(
           sd_not_alt = sigma,
           mu_not_alt = mu,

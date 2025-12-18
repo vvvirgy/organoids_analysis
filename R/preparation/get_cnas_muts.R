@@ -7,7 +7,8 @@ extract_mutational_status = function(x, #cnaqc obj
                                      which = c('CCF', 'muts'), 
                                      symbol_column = 'VEP.SYMBOL', 
                                      consequence_column = 'VEP.Consequence', 
-                                     impact_column = 'VEP.IMPACT'
+                                     impact_column = 'VEP.IMPACT', 
+                                     polyphen_column = 'MAF.PolyPhen'
 ) {
   
   # muts = relative_to_abs_coords(CNAqc::Mutations(x), x$reference_genome)
@@ -28,15 +29,15 @@ extract_mutational_status = function(x, #cnaqc obj
                                   'alt' == 'alt', 
                                   'VAF' == 'VAF',  
                                   'VEP.SYMBOL' == 'VEP.SYMBOL')) %>% 
-      dplyr::select(chr, from, to, ref, alt, NV, DP, VAF, all_of(c(symbol_column, consequence_column, impact_column)), driver_label, is_driver, segment_id, QC_PASS, karyotype, multiplicity, CCF)
+      dplyr::select(chr, from, to, ref, alt, NV, DP, VAF, all_of(c(symbol_column, consequence_column, impact_column, polyphen_column)), driver_label, is_driver, segment_id, QC_PASS, karyotype, multiplicity, CCF)
   } else {
       muts = muts %>% 
-        dplyr::select(chr, from, to, ref, alt, NV, DP, VAF, all_of(c(symbol_column, consequence_column, impact_column)), driver_label, is_driver, segment_id, QC_PASS, karyotype)
+        dplyr::select(chr, from, to, ref, alt, NV, DP, VAF, all_of(c(symbol_column, consequence_column, impact_column, polyphen_column)), driver_label, is_driver, segment_id, QC_PASS, karyotype)
     }
   
   muts_new_names = setNames(
-    nm = c('SYMBOL', 'Consequence', 'IMPACT'),
-    object = c(symbol_column, consequence_column, impact_column)
+    nm = c('SYMBOL', 'Consequence', 'IMPACT', 'Polyphen_class'),
+    object = c(symbol_column, consequence_column, impact_column, polyphen_column)
   )
   
   # convert in absolute coordinates

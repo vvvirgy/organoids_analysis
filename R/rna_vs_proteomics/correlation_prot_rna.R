@@ -1,8 +1,10 @@
+.libPaths()
+rm(list=ls())
 library(tidyverse)
 
 source('/orfeo/cephfs/scratch/cdslab/vgazziero/TLS/CLL_Cu/copper/CuRes/R/utils/expression/data_manipulation/corr_functions.R')
-proteogenomics_data = readRDS('data/proteogenomics_data_all_genes.rds')
-transcriptomics_data = readRDS('data/transcriptomics_data_all_genes.rds')
+proteogenomics_data = readRDS('data/proteogenomics_data_all_genes_new_norm_v4.rds')
+transcriptomics_data = readRDS('data/transcriptomics_data_all_genes_v5.rds')
 all_genes = intersect(unique(proteogenomics_data$hgnc_symbol), unique(transcriptomics_data$hgnc_symbol))
 
 # proteogenomics_data = proteogenomics_data %>% 
@@ -62,6 +64,24 @@ corr = get_corr_stats(data,
                             method = 'spearman')
 saveRDS(corr, 'data/correlations_protein_rna.rds')
 
+corr = corr %>% 
+  mutate(corr_type = case_when(
+    (qValue <= 0.05 & correlation > 0) ~ 'positive', 
+    (qValue <= 0.05 & correlation < 0) ~ 'negative', 
+    .default = 'ns'
+  ))
+
 corr %>% 
-  ggplot(aes(y = -log(qValue, 10), x = correlation)) +
-  geom_point()
+  ggplot(aes(x = -log(qValue, 10), y = correlation, color = corr_type)) +
+  geom_point(alpha = 0.7) + 
+  theme_bw() + 
+  labs(y = 'Correlation (Spearmann)',
+       x = '-log10(pValue)') + 
+  scale_color_manual(values = c('positive' = '#3291B6', 'negative' = '#DE1A58', 'ns' = 'grey45')) + 
+  guides(color = guide_legend(title = 'Correlation')) + 
+  theme(legend.position = 'bottom')
+ggsave('res/correlation_spearmann.png', width = 6, height = 5, dpi = 300)
+
+corr %>% 
+  group_by(corr_type) %>% 
+  count()
