@@ -33,7 +33,7 @@ data = lapply(list.files(data_path, full.names = T), function(p) {
   x = as.matrix(x)
   
   gene_expression = rowSums(x)
-  gene_expression = gene_expression / sum(gene_expression)
+  # gene_expression = gene_expression / sum(gene_expression)
   
   genomic_sample = all_samples_dict %>% 
     filter(scRNA_sample == sample)
