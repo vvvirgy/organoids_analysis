@@ -1,13 +1,15 @@
+rm(list=ls())
+
 library(tidyverse)
 
-drivers = readRDS("drivers.rds")
-proteomics_data = readxl::read_excel("DataLog&TransformedAfterNormalization_ProMeFa_NAImputed.xlsx")
+drivers = readRDS("data/drivers.rds")
+proteomics_data = readxl::read_excel("~/Documents/Università/PhD/projects/organoids/DataLog&TransformedAfterNormalization_ProMeFa_NARemoved.xlsx")
 
 proteomics_data = proteomics_data %>% 
   dplyr::rename("gene" = ...1)
 
 # map sample names among the experiments (hopefully)
-mapping = readxl::read_excel("mapping_ICR_names.xlsx")
+mapping = readxl::read_excel("~/Documents/Università/PhD/projects/organoids/mapping_ICR_names.xlsx")
 
 mapping = mapping %>% 
   select(`Patient code (HSR)`, `Patient code (ICR)`, fixed_name) %>% 
@@ -34,3 +36,23 @@ new_mapping_experiment = new_mapping %>%
                                        .default = fixed_name))
 
 saveRDS(new_mapping_experiment, "mapping_samples.rds")
+
+# now include also the transcriptomics names
+matching_samples = readxl::read_excel('data/scRNA_samples.xlsx', sheet = 1) %>% 
+  as.data.frame() %>% 
+  dplyr::mutate(genomics_code = ifelse(genomics_code == 'NA', NA, genomics_code)) %>% 
+  dplyr::mutate(fixed_name = ifelse(fixed_name == 'NA', NA, fixed_name))
+
+samples_check = matching_samples %>% 
+  dplyr::select(fixed_name, scRNA_sample) %>%
+  dplyr::distinct()
+
+head(samples_check)
+
+dict = read.table('~/Documents/Università/PhD/projects/organoids/dictionary_nomenclature.csv', sep = ',', header = T)
+head(dict)
+
+
+setdiff(dict$organoid_id, samples_check$fixed_name)
+
+list.files('data/scRNA/')
