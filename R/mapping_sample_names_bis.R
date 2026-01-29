@@ -18,7 +18,8 @@ tt = read.csv('data/scRNA_samples.csv', header = T, sep = ',')
 tt = tt %>% 
   select(RNA, DNA) %>% 
   mutate(RNA = gsub('Sample_', '', RNA)) %>% 
-  mutate(RNA = ifelse(RNA == '', NA, RNA))
+  mutate(RNA = ifelse(RNA == '', NA, RNA)) %>% 
+  mutate(DNA = gsub(' ', '', DNA))
 
 write.csv(tt, file = 'data/rna_dna_dictionary.csv', sep = ',', quote = F, col.names = T)
 
