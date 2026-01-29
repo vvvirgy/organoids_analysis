@@ -79,11 +79,15 @@ dds <- DESeq(dds)
 vsd <- vst(dds, blind = FALSE)
 norm_rna <- assay(vsd)
 
+norm_counts = counts(dds, normalize = TRUE)
+
 dict = readRDS('data/full_dict_dna_rna_prot.rds')
 genes_karyo_muts = readRDS('data/karyotypes_mutations_all_genes_qc_ccf_v4.rds')
 
-samples <- colnames(norm_rna)
+# samples <- colnames(norm_rna)
+samples <- colnames(norm_counts)
 
+# using vst
 norm_rna_long = norm_rna %>% 
   as.data.frame() %>% 
   tibble::rownames_to_column('gene') %>% 
@@ -97,10 +101,53 @@ norm_rna_long = norm_rna_long %>%
 norm_rna_long_v2 = norm_rna_long %>% 
   # filter(!is.na(expression)) %>% 
   left_join(., genes_karyo_muts, by = join_by('fixed_name' == 'sample', 
-                                     'gene' == 'hgnc_symbol')) %>% 
+                                              'gene' == 'hgnc_symbol')) %>% 
+  filter(!grepl('^LINC', gene))
+
+# using norm counts
+norm_counts_long = norm_counts %>% 
+  as.data.frame() %>% 
+  tibble::rownames_to_column('gene') %>% 
+  pivot_longer(cols = all_of(samples), names_to = 'sample', values_to = 'expression')
+
+norm_counts_long = norm_counts_long %>% 
+  full_join(., dict, by = join_by('sample' == 'RNA')) %>% 
+  filter(!is.na(expression)) 
+
+# not accounting yet for multihits and multi-segments
+norm_counts_long_v2 = norm_counts_long %>% 
+  # filter(!is.na(expression)) %>% 
+  left_join(., genes_karyo_muts, by = join_by('fixed_name' == 'sample', 
+                                              'gene' == 'hgnc_symbol')) %>% 
   filter(!grepl('^LINC', gene))
 
 saveRDS(norm_rna_long_v2, 'data/rna_new_norm_merged.rds')
+
+
+norm_counts_long_v2 %>% 
+  filter(gene == 'KRAS') %>% 
+  select(gene, sample, karyotype, expression) %>% 
+  distinct() %>% 
+  tidyr::separate(karyotype, sep = ':', into = c('Major', 'minor'), convert = T) %>%
+  mutate(tot_cna = Major+minor) %>%
+  ggplot(aes(x = tot_cna, y = expression)) +
+  geom_point() +
+  theme_bw() + 
+  geom_smooth(method = 'lm') + 
+  ggpmisc::stat_poly_eq(use_label('eq', 'P'))
+
+norm_rna_long_v2 %>% 
+  filter(gene == 'KRAS') %>% 
+  select(gene, sample, karyotype, expression) %>% 
+  distinct() %>% 
+  tidyr::separate(karyotype, sep = ':', into = c('Major', 'minor'), convert = T) %>%
+  mutate(tot_cna = Major+minor) %>%
+  # filter(tot_cna < 5 ) %>% 
+  ggplot(aes(x = log(tot_cna, base = 2), y = expression)) +
+  geom_point() +
+  theme_bw() + 
+  geom_smooth(method = 'lm') + 
+  ggpmisc::stat_poly_eq(use_label('eq', 'P'))
 
 
 # 

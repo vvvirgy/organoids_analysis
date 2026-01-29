@@ -4,20 +4,11 @@ library(tidyverse)
 library(CNAqc)
 # source('~/Desktop/lade_scratch/CDSlab/brca_cro_prj/BRCA_CRO/new_analysis/functions/CNA/get_cna_status_region_specific.R')
 source('/orfeo/cephfs/scratch/area/vgazziero/CDSlab/brca_cro_prj/BRCA_CRO/new_analysis/functions/CNA/get_cna_status_region_specific.R')
-source('/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj/organoids_analysis/R/preparation/get_cna_function.R')
+source('/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj/organoids_analysis/R/preprocessing/get_cna_function.R')
 
 setwd('/orfeo/scratch/cdslab/vgazziero/organoids_prj')
-cnas = readRDS('data/cnaqc/cnas_list.rds')
-# cnas = lapply(cnas, function(x) {CNAqc::wt_mutant_alleles(x)})
-# cnas = lapply(cnas, function(x) {CNAqc::compute_CCF(x, method = 'ROUGH')})
-# saveRDS(cnas, 'data/cnaqc/cnas_list_rough_ccf.rds')
-# 
-# cnas = readRDS('data/cnaqc/cnas_list_rough_ccf.rds')
+cnas = readRDS('data/cnaqc_v2/cnas_list_v2.rds')
 
-# CNAqc::plot_multisample_CNA(cnas)
-# ggsave('res/all_organoids_cna_cohort.png')
-
-# coad_genes = readRDS('~/Google Drive/Il mio Drive/PhD/organoids/cancer_gene_census_positions.rds')
 coad_genes = readRDS('data/all_genes_positions_info.rds')
 coad_genes = coad_genes %>% 
   dplyr::relocate(hgnc_symbol, .after = to) %>% 
@@ -37,13 +28,11 @@ genes_karyo = lapply(names(cnas), function(x) {
     
   }) %>% 
     dplyr::bind_rows()
-  # get_cna_status(cnas[[x]], drivers = coad_genes) %>% s
-  #   dplyr::mutate(sample = x)
 }) %>% 
   dplyr::bind_rows()
 
-# saveRDS(genes_karyo, '~/Desktop/cdslab_scratch/organoids_prj/data/karyotypes_all_genes.rds')
-saveRDS(genes_karyo, '/orfeo/scratch/cdslab/vgazziero/organoids_prj/data/karyotypes_all_genes_qc_v3.rds')
+saveRDS(genes_karyo, '/orfeo/scratch/cdslab/vgazziero/organoids_prj/data/processed_data/karyotypes_all_genes_qc.rds')
+
 # usa solo informazione del karyotype
 
 # include mutation types

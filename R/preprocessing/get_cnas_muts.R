@@ -29,10 +29,10 @@ extract_mutational_status = function(x, #cnaqc obj
                                   'alt' == 'alt', 
                                   'VAF' == 'VAF',  
                                   'VEP.SYMBOL' == 'VEP.SYMBOL')) %>% 
-      dplyr::select(chr, from, to, ref, alt, NV, DP, VAF, all_of(c(symbol_column, consequence_column, impact_column, polyphen_column)), driver_label, is_driver, segment_id, QC_PASS, karyotype, multiplicity, CCF)
+      dplyr::select(chr, from, to, ref, alt, NV, DP, VAF, all_of(c(symbol_column, consequence_column, impact_column, polyphen_column)), driver_label, is_driver, segment_id, karyotype, multiplicity, CCF)
   } else {
       muts = muts %>% 
-        dplyr::select(chr, from, to, ref, alt, NV, DP, VAF, all_of(c(symbol_column, consequence_column, impact_column, polyphen_column)), driver_label, is_driver, segment_id, QC_PASS, karyotype)
+        dplyr::select(chr, from, to, ref, alt, NV, DP, VAF, all_of(c(symbol_column, consequence_column, impact_column, polyphen_column)), driver_label, is_driver, segment_id, karyotype)
     }
   
   muts_new_names = setNames(
@@ -82,7 +82,6 @@ extract_mutational_status = function(x, #cnaqc obj
       'minor' == 'minor',
       'segment_from' == 'segment_from', 
       'segment_to' == 'segment_to', 
-      'QC_PASS' == 'QC_PASS', 
       'sample' == 'sample'
     ))
   
