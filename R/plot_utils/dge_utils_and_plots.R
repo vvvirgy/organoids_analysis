@@ -39,7 +39,9 @@ plot_volcano = function(x, omic_list, cols, pth = .05, fth = .75) {
     facet_grid(omic~karyotype, scales = 'free_y') + 
     scale_color_manual(values = cols) + 
     scale_alpha_manual(values = setNames(c(1, .3), c('significant', 'ns'))) + 
-    guides(alpha = guide_legend(theme = theme(legend.position = 'None'))) + 
+    guides(alpha = guide_legend(theme = theme(legend.position = 'None'), 
+                                title = 'Significance class (padj <= 0.05)'), 
+           color = guide_legend(title = 'FC class')) + 
     geom_hline(yintercept = -log10(pth), linetype = 'dashed', alpha = .7, colour = '#151515') + 
     geom_vline(xintercept = c(-fth, fth), linetype = 'dashed', alpha = .7, colour = '#151515')
 }
@@ -217,12 +219,13 @@ plot_sankey = function(x,
                        cols) {
   
   x = x %>% 
+    filter(!is.na(lfc), !is.na(adj_pval)) %>% 
     mutate(cls = paste(significance, fc_cls, sep = ', ')) %>% 
     mutate(cls = ifelse(
       significance == 'ns', 'ns', cls
     )) %>% 
     mutate(cls = ifelse(
-      (is.na(significance) & is.na(fc_cls)), 'not estimated', cls)
+      (is.na(significance) & is.na(lfc)), 'not estimated', cls)
     ) %>% 
     mutate(stratum = factor(.data[[strat]])) %>% 
     group_by(karyotype, omic, cls) %>% 
@@ -256,14 +259,93 @@ fc_cols = setNames(
   object = c('firebrick', 'darkblue', '#5D0E41', '#FFF0CE')
 )
 
+sankey_annotations_by_omic = function(x, 
+                                      filter_terms = TRUE,
+                                      karyo, 
+                                      omic_list = c('RNA', 'protein'),
+                                      pth = .05, 
+                                      source_list = NULL, 
+                                      cols
+                                      
+) {
+  
+  # rna = paste('RNA', karyo, c('up', 'down', 'not differential'), sep = '_')
+  
+  classes = cross(list(omic_list, karyo, c('up', 'down', 'not differential'))) %>% map_chr(paste, sep = "_", collapse = "_")
+  
+  x = x[c(classes)]
+  
+  df = lapply(x %>% names, function(data) {
+    x[[data]]$result %>% 
+      mutate(category = data)
+  }) %>% bind_rows() 
+  
+  if(filter_terms == TRUE) {
+    df = df %>% 
+      filter(p_value <= pth)
+  }
+  
+  if(!is.null(source_list)) {
+    df = df %>% 
+      filter(source %in% source_list)
+  }
+  
+  # merge the results in a better way
+  
+  df = df %>% 
+    separate(category, sep = '_', into = c('omic', 'karyotype', 'fc_cls')) %>% 
+    dplyr::select(term_name, fc_cls, omic, karyotype) %>% 
+    distinct() %>% 
+    group_by(term_name, karyotype) %>% 
+    filter(n() == 1) %>% 
+    ungroup() %>% 
+    complete(
+      term_name,
+      karyotype,
+      omic,
+      fill = list(
+        fc_cls = 'not present'
+      )
+    ) %>% 
+    # mutate(omic = factor(omic, levels = c('RNA', 'protein'))) %>%
+    mutate(karyotype = factor(karyotype)) %>% 
+    mutate(fc_cls = factor(fc_cls, levels = c('not present', 'down', 'not differential', 'up') %>% rev)) %>% 
+    group_by(karyotype) %>% 
+    mutate(freq = row_number()/n())
+    
+  df %>% 
+    # filter(omic == 'RNA') %>% 
+    ggplot(
+      aes(x = karyotype, 
+          stratum = fc_cls, 
+          alluvium = term_name,
+          y = freq,
+          fill = fc_cls
+          ) 
+    ) + 
+    scale_fill_manual(values = cols)+
+    # geom_flow(stat = "alluvium", lode.guidance = "frontback") +
+    geom_flow(alpha = .7) +
+    geom_stratum() +
+    theme_light() + 
+    # ggtitle(paste('karyotype', karyo)) + 
+    labs(y = '',
+         x = 'Omic Assay') + 
+    guides(fill = guide_legend(title = 'FC class', position = 'bottom')) + 
+    facet_wrap(~omic, scales = 'free') + 
+    ggtitle('Annotations among karyotypes')
+  
+}
+
+
 sankey_annotations = function(x, 
-                         # by = 'omic', 
-                         filter_terms = TRUE,
-                         karyo, 
-                         pth = .05, 
-                         source_list = NULL, 
-                         cols
-                         
+                              # by = 'omic', 
+                              filter_terms = TRUE,
+                              karyo, 
+                              pth = .05, 
+                              source_list = NULL, 
+                              cols
+                              
 ) {
   
   rna = paste('RNA', karyo, c('up', 'down', 'not differential'), sep = '_')
@@ -306,7 +388,7 @@ sankey_annotations = function(x,
     mutate(fc_cls = factor(fc_cls, levels = c('not present', 'down', 'not differential', 'up') %>% rev)) %>% 
     group_by(omic) %>% 
     mutate(freq = row_number()/n())
-    
+  
   df %>% 
     # filter(omic == 'RNA') %>% 
     ggplot(
@@ -315,7 +397,7 @@ sankey_annotations = function(x,
           alluvium = term_name,
           y = freq,
           fill = fc_cls
-          ) 
+      ) 
     ) + 
     scale_fill_manual(values = cols)+
     # geom_flow(stat = "alluvium", lode.guidance = "frontback") +
@@ -335,23 +417,69 @@ plot_enrichment_results = function(df, highlight, colors, order_by = NULL, sourc
   if(highlight == TRUE) {
     df = df %>% 
       filter(highlighted == TRUE)
+  } else if(!is.null(sources)) {
+    df = df %>% 
+      filter(source %in% sources)
   }
   
   df %>% 
-    mutate(ratio = intersection_size/term_size) %>% 
+    # mutate(ratio = intersection_size/term_size) %>% 
     ggplot(aes(
-      x = ratio, 
-      y = term_name, 
+      x = precision, 
+      y = reorder(term_name, +precision), 
       color = p_value, 
       size = intersection_size
     )) + 
     geom_point() + 
     theme_light() + 
-    scale_color_continuous(palette = 'Blues')
-    
-    
+    scale_fill_distiller(palette = 'Blues') + 
+    labs(
+      y = 'Biological terms', 
+      x = 'Precision'
+    )
+
+    # scale_color_brewer(palette = 'Blues')
+
+}
+
+# enrichment_barplot
+
+enrichment_barplot = function(x, 
+                              pth = .05, 
+                              source_list = NULL, 
+                              cols) {
+  
+  df = lapply(names(x), function(data){
+    x[[data]]$result %>% 
+      mutate(category = data)
+  }) %>% bind_rows() %>% 
+    tidyr::separate(category, into = c('omic' ,'karyotype', 'cls'), sep = '_', convert = T)
+  
+  if(!is.null(source_list)) {
+    df = df %>% 
+      filter(source %in% source_list)
+  }
+  
+  df = df %>% 
+    filter(p_value <= pth)
+  
+  df %>% 
+    ggplot(aes(
+      cls, 
+      fill = cls
+    )) + 
+    geom_bar(stat = 'count') + 
+    theme_light() + 
+    ggh4x::facet_nested_wrap(vars(omic, karyotype), ncol = 1, strip.position = 'right') +   
+    coord_flip() + 
+    scale_fill_manual(values = cols) +
+    labs(
+      y = 'Number of terms', 
+      x = 'FC class'
+    )
   
 }
+  
 
 enrichment_heatmap = function(x, source_list, pth = .05, genes_number = 4, highlight = TRUE) {
   
@@ -388,22 +516,92 @@ enrichment_heatmap = function(x, source_list, pth = .05, genes_number = 4, highl
 
 }
 
+
+plot_terms_fc = function(res, 
+                         deg, 
+                         source_list = c('GO:MF', 'GO:CC', 'GO:BP', 'REAC', 'KEGG', 'WP'), 
+                         pth = .05, 
+                         highlight = FALSE,
+                         genes_number = 0, 
+                         karyo, 
+                         omics) {
+  
+  genes = res$meta$query_metadata$queries$query_1 %>% unique
+  df = res$result %>% 
+    separate_rows(intersection, sep = ',') %>% 
+    filter(intersection_size >= genes_number) 
+  
+  if(highlight == TRUE) {
+    df = df %>% 
+      filter(highlighted == TRUE)
+  } else {
+    df = df %>% 
+      filter(source %in% source_list)
+  }
+  
+  # filter the deg table
+  
+  deg = deg %>%
+    filter(karyotype == karyo) %>%
+    filter(omic %in% omics) %>%
+    filter(name %in% genes) %>% 
+    mutate(omic = as.character(omic))
+  
+  df = df %>% 
+    left_join(., deg, by = join_by('intersection' == 'name')) %>%
+    dplyr::select(term_name, intersection, lfc, omic, karyotype, source, intersection_size) 
+  
+  # ann_data = df %>% 
+  #   select(source, term_name, intersection_size) %>% 
+  #   distinct() %>% 
+  #   select(source, intersection_size)
+  # 
+  # ann = create_annotation(ann_data %>% select(source), 
+  #                         ann_colors = ann_colors, 
+  #                         position = 'row')
+  # bar_ann = rowAnnotation('number of genes' = anno_barplot(ann_data$intersection_size, baseline = 0,  
+  #                                                          axis_param = list(direction = "reverse")))
+  
+  df = df %>% 
+    mutate(omic = as.character(omic)) %>% 
+    group_by(term_name, omic, source) %>% 
+    summarise(mean_fc = mean(lfc,na.rm = T), 
+              sd_fc = sd(lfc, na.rm = T)) %>% 
+    mutate(term_name = 
+             ifelse(duplicated(.data[['term_name']]), paste0(term_name, ' (', source, ')'), term_name)) 
+  
+  
+  df %>% 
+    ggplot(aes(y = reorder(term_name, +mean_fc), 
+               x = mean_fc, 
+               color = mean_fc)) + 
+    geom_point() + 
+    theme_light() +
+    geom_errorbar(aes(xmin = mean_fc-sd_fc, xmax = mean_fc+sd_fc)) + 
+    labs(
+      x = 'Mean FC per term', 
+      y = 'Biological term'
+    ) + 
+    facet_wrap(~source, scales = 'free_y', ncol = 1)
+  
+}
+
 # create a heatmap using complexheatmap
 
 
-preprocess_data_for_heatmap = function(res,
-                                       deg,
-                                       source_list,
-                                       pth = .05,
-                                       genes_number = 4,
-                                       highlight = FALSE,
-                                       karyo,
-                                       omics = c('RNA', 'protein'), 
-                                       direction) {
-  
-  if(names(res) )
-  
-}
+# preprocess_data_for_heatmap = function(res,
+#                                        deg,
+#                                        source_list,
+#                                        pth = .05,
+#                                        genes_number = 4,
+#                                        highlight = FALSE,
+#                                        karyo,
+#                                        omics = c('RNA', 'protein'), 
+#                                        direction) {
+#   
+#   if(names(res) )
+#   
+# }
 
 create_annotation = function(x, ann_colors, position) {
   
@@ -485,7 +683,8 @@ plot_fc_heatmap = function(res,
     ht = ComplexHeatmap::Heatmap(df, 
                             col = col_scale,
                             right_annotation = ann, 
-                            left_annotation = bar_ann
+                            left_annotation = bar_ann, 
+                            name = 'mean(FC)'
                             )
     draw(ht, 
          merge_legend = TRUE, 
@@ -498,7 +697,8 @@ plot_fc_heatmap = function(res,
     ht = ComplexHeatmap::Heatmap(df, 
                             col = col_scale, 
                             right_annotation = ann, 
-                            left_annotation = bar_ann)
+                            left_annotation = bar_ann, 
+                            name = 'mean(FC)')
     draw(ht, 
          merge_legend = TRUE, 
          heatmap_legend_side = "bottom", 
@@ -507,7 +707,8 @@ plot_fc_heatmap = function(res,
   } else {
     ht = ComplexHeatmap::Heatmap(df, 
                                  right_annotation = ann, 
-                                 left_annotation = bar_ann)
+                                 left_annotation = bar_ann, 
+                                 name = 'mean(FC)')
     
     draw(ht, 
          merge_legend = TRUE, 
@@ -519,6 +720,75 @@ plot_fc_heatmap = function(res,
 }
 
 
+
+# RUNNING OF GSEA ON DIFFERENT DATABASES ------
+
+run_gsea = function(genes, 
+                    databases = c('GO', 'KEGG', 'WP', 'REAC')) {
+  
+  res = list()
+  
+  if('GO' %in% databases) {
+    
+    res$GO <- gseGO(
+      geneList = genes,
+      OrgDb = org.Hs.eg.db, 
+      pvalueCutoff = 0.05, 
+      ont = "ALL",
+      minGSSize = 10,
+      maxGSSize = 250,
+      keyType = "ENTREZID",
+      pAdjustMethod = "BH",
+      by = "fgsea"
+    )
+  }
+  
+  if('REAC' %in% databases) {
+    res$REAC <- gsePathway(
+      geneList = genes,
+      organism = "human",
+      pAdjustMethod = "BH", 
+      pvalueCutoff = 0.05, 
+      minGSSize = 10,
+      maxGSSize = 250,
+      by = "fgsea"
+    )
+    
+  }
+  
+  if('WP' %in% databases) {
+    res$WP = gseWP(genes, 
+                   organism = "Homo sapiens", 
+                   pvalueCutoff = 0.05, 
+                   minGSSize = 10,
+                   maxGSSize = 250,
+                   pAdjustMethod = "BH")
+  }
+  
+  if('KEGG' %in% databases) {
+    res$KEGG <- gseKEGG(
+      geneList = genes,
+      pvalueCutoff = 0.05,
+      minGSSize = 10,
+      maxGSSize = 250,
+      organism = "hsa",
+      pAdjustMethod = "BH"
+    )
+  }
+  
+  return(res)
+}
+
+plot_nes = function(x) {
+  x %>% 
+    ggplot(aes(y = Description, 
+               x = NES, 
+               color = p.adjust)) + 
+    geom_point() + 
+    scale_color_viridis_c(option = 'viridis') + 
+    theme_light()
+}
+  
 # enrichment_heatmap = function(x, source_list, pth = .05, genes_number = 4, highlight = F) {
 #   
 #   df = x$result

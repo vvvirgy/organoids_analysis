@@ -11,6 +11,7 @@ library(rcartocolor)
 setwd("/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj")
 
 source('organoids_analysis/R/plot_utils/dge_utils_and_plots.R')
+# source('/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj/organoids_analysis/R/plot_utils/dge_utils_and_plots.R')
 
 # multi_omics = readRDS('/orfeo/cephfs/scratch/cdslab/gsantacatterina/organoids_proj/results/lfc_prot_and_rna_bind.rds')
 multi_omics = readRDS('data/lfc_prot_and_rna_bind.rds')
@@ -23,22 +24,41 @@ multi_omics = classify_genes(multi_omics)
 multi_omics = multi_omics %>% 
   mutate(omic = factor(omic, levels = c('RNA', 'protein')))
 
-volcano = plot_volcano(multi_omics, omic = c('RNA', 'protein'), cols = expr_cols)
+volcano = plot_volcano(multi_omics, omic = c('RNA', 'protein'), cols = expr_cols) + 
+  xlab('log FC')
 
 # add the protein and rna facet colors
 ggsave(plot = volcano, filename = 'res/volcano_rna_prot.png', width = 10,  height = 6)
 ggsave(plot = volcano, filename = 'res/volcano_rna_prot.pdf', width = 10,  height = 6)
 
-# summary statistics with how many genes have been done per karyotype
-# 
-# # how many genes have been called?
-# multi_omics %>% 
-#   filter(!is.na(lfc)) %>% 
-#   group_by(name, omic) %>% 
-#   count() %>% 
-#   ggplot(aes(n, fill = omic)) + 
-#   geom_bar(stat = 'count', position = 'dodge') + 
-#   theme_bw()
+# summary statistics --> how many DEGs per karyotype and omic?
+
+barplot_multiomics = multi_omics %>%
+  filter(!is.na(lfc)) %>%
+  filter(significance == 'significant') %>% 
+  group_by(omic, karyotype, fc_cls) %>%
+  ggplot(aes(fc_cls, fill = fc_cls)) +
+  geom_bar(stat = 'count', position = 'dodge') +
+  theme_bw() + 
+  facet_grid(omic~karyotype, scales = 'free') + 
+  scale_fill_manual(values = expr_cols) +
+  coord_flip() + 
+  guides(fill = guide_legend(title = 'FC class')) + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust = 0.5)) + 
+  labs(x = 'FC class', 
+       y = 'Number of genes') 
+ggsave('res/number_of_degs_omic.png', width = 10, height = 6)
+ggsave('res/number_of_degs_omic.png', width = 10, height = 6)
+
+pt_l = 'AAAA
+        AAAA
+        BBBB'
+(volcano / barplot_multiomics) + 
+  plot_annotation(tag_levels = 'A') + 
+  plot_layout(design = pt_l)
+  
+ggsave('res/de_results_summary.png', width = 10, height = 7)
+ggsave('res/de_results_summary.pdf', width = 10, height = 7)
 
 # checking how many genes do have the fc for each karyotype
 
@@ -62,7 +82,9 @@ multi_omics_plot = multi_omics %>%
 multi_omics_fc_plt(multi_omics_plot, gene = 'PIK3CA', colors = c('RNA' = '#296374', 'protein' = '#D02752'))
 multi_omics_fc_plt(multi_omics_plot, gene = 'KRAS', colors = c('RNA' = '#296374', 'protein' = '#D02752'))
 multi_omics_fc_plt(multi_omics_plot, gene = 'SMAD2', colors = c('RNA' = '#296374', 'protein' = '#D02752'))
+ggsave('res/genes_fc/smad2_fc.png', width = 8, height = 6)
 multi_omics_fc_plt(multi_omics_plot, gene = 'AKT1', colors = c('RNA' = '#296374', 'protein' = '#D02752'))
+ggsave('res/genes_fc/akt1_fc.png', width = 8, height = 6)
 
 # might add the confidence intervals or a * to indicate the significance
 
@@ -89,6 +111,10 @@ multi_omics_cls = multi_omics %>%
 plot_omics_comparison(multi_omics_cls, filter = T, bg_colors = bg_cols)
 ggsave('res/rna_vs_protein_fc_significant_only.png', width = 10, height = 10)  
 ggsave('res/rna_vs_protein_fc_significant_only.pdf', width = 10, height = 10) 
+
+plot_omics_comparison(multi_omics_cls, filter = F, bg_colors = bg_cols)
+ggsave('res/rna_vs_protein_fc_all.png', width = 10, height = 10)  
+ggsave('res/rna_vs_protein_fc_all.pdf', width = 10, height = 10) 
 
   
 # distribution of genes in classes
@@ -225,8 +251,13 @@ multi_omics_v2 = multi_omics %>%
   ) 
   
 plot_sankey(multi_omics_v2, strat = 'karyotype', facet = 'omic', cols = sankey_cols)
-plot_sankey(multi_omics_v2, strat = 'omic', facet = 'karyotype', cols = sankey_cols)  
+ggsave('res/omic_sankey_classes.png', width = 10)
+ggsave('res/omic_sankey_classes.pdf', width = 10)
+plot_sankey(multi_omics, strat = 'karyotype', facet = 'omic', cols = sankey_cols)
 
+plot_sankey(multi_omics_v2, strat = 'omic', facet = 'karyotype', cols = sankey_cols)  
+ggsave('res/karyotype_sankey_classes.png', width = 10)
+ggsave('res/karyotype_sankey_classes.pdf', width = 10)
 
 
 # take a look to which genes are significant --> interesting groups
@@ -259,6 +290,8 @@ degs_enrich = lapply(degs_karyo_omic, function(x) {
 })
 saveRDS(degs_enrich, 'data/enrichment_results/degs_enrich.rds')
 
+degs_enrich = readRDS('data/enrichment_results/degs_enrich.rds')
+
 # visualising the results for the real degs
 
 wrap_plots(list(sankey_annotations(degs_enrich, karyo = '1:0', cols = fc_cols),
@@ -272,26 +305,178 @@ ggsave('res/annotation/sankeys_karyotypes_annotations.png', width = 10, height =
 ggsave('res/annotation/sankeys_karyotypes_annotations.pdf', width = 10, height = 8)
 
 
-plot_fc_heatmap(res = degs_enrich$`RNA_2:2_up`, 
-                deg = multi_omics, 
-                # source_list = c('GO:BP', 'GO:MF', 'GO:CC', 'REAC', 'KEGG', 'WP', 'CORUM'), 
-                source_list = c('REAC', 'KEGG', 'WP', 'CORUM'), 
-                genes_number = 20,
-                omics = 'RNA',
-                karyo = '2:2', 
-                direction = 'up',
-                ann_colors = source_colors)
+sankey_annotations_by_omic(degs_enrich, filter_terms = T, karyo = c('1:0', '2:0', '2:1', '2:2'), omic_list = c('RNA'), pth = .05, cols = fc_cols)
+sankey_annotations_by_omic(degs_enrich, filter_terms = T, karyo = c('1:0', '2:0', '2:1', '2:2'), omic_list = c('protein'), pth = .05, cols = fc_cols)
+ggsave('res/annotation/sankeys_karyotypes_annotations.pdf', width = 10, height = 8)
 
-plot_fc_heatmap(res = degs_enrich$`RNA_1:0_down`, 
-                deg = multi_omics, 
-                # source_list = c('GO:BP', 'GO:MF', 'GO:CC', 'REAC', 'KEGG', 'WP', 'CORUM'), 
-                source_list = c('REAC', 'KEGG', 'WP', 'CORUM'), 
-                genes_number = 10,
-                omics = 'RNA',
-                karyo = '1:0', 
-                direction = 'down',
-                ann_colors = source_colors)
+# pdf('res/annotation/enrichment_degs.pdf', width = 20, height = 30)
+# lapply(names(degs_enrich), function(x) {
+#   print(plot_enrichment_results(degs_enrich[[x]]$result, 
+#                           highlight = F, 
+#                           sources = c('REAC', 'KEGG', 'WP', 'CORUM', 'GO:BP', 'GO:MF', 'GO:CC')) + 
+#     ggtitle(gsub('_', ' ', x)))
+# })
+# graphics.off()
 
+plot_enrichment_results(degs_enrich$`RNA_1:0_up`$result, highlight = F, sources = c('REAC', 'KEGG', 'WP', 'CORUM', 'GO:BP', 'GO:MF', 'GO:CC')) + 
+  facet_wrap(~source, scales = 'free', ncol = 1)
+plot_enrichment_results(degs_enrich$`protein_1:0_up`$result, highlight = F, sources = c('REAC', 'KEGG', 'WP', 'CORUM', 'GO:BP', 'GO:MF', 'GO:CC')) + 
+  facet_wrap(~source, scales = 'free', ncol = 1)
+plot_enrichment_results(degs_enrich$`RNA_2:0_up`$result, highlight = F, sources = c('REAC', 'KEGG', 'WP', 'CORUM', 'GO:BP', 'GO:MF', 'GO:CC')) + 
+  facet_wrap(~source, scales = 'free', ncol = 1)
+plot_enrichment_results(degs_enrich$`protein_2:0_up`$result, highlight = F, sources = c('REAC', 'KEGG', 'WP', 'CORUM', 'GO:BP', 'GO:MF', 'GO:CC')) + 
+  facet_wrap(~source, scales = 'free', ncol = 1)
+plot_enrichment_results(degs_enrich$`RNA_2:1_up`$result, highlight = F, sources = c('REAC', 'KEGG', 'WP', 'CORUM', 'GO:BP', 'GO:MF', 'GO:CC')) + 
+  facet_wrap(~source, scales = 'free', ncol = 1)
+plot_enrichment_results(degs_enrich$`protein_2:1_up`$result, highlight = F, sources = c('REAC', 'KEGG', 'WP', 'CORUM', 'GO:BP', 'GO:MF', 'GO:CC')) + 
+  facet_wrap(~source, scales = 'free', ncol = 1)
+plot_enrichment_results(degs_enrich$`protein_2:2_up`$result, highlight = F, sources = c('REAC', 'KEGG', 'WP', 'CORUM', 'GO:BP', 'GO:MF', 'GO:CC')) + 
+  facet_wrap(~source, scales = 'free', ncol = 1)
+plot_enrichment_results(degs_enrich$`RNA_2:2_up`$result, highlight = F, sources = c('REAC', 'KEGG', 'WP', 'CORUM', 'GO:BP', 'GO:MF', 'GO:CC')) + 
+  facet_wrap(~source, scales = 'free', ncol = 1)
+
+plot_enrichment_results(degs_enrich$`RNA_1:0_down`$result, highlight = F, sources = c('REAC', 'KEGG', 'WP', 'CORUM', 'GO:BP', 'GO:MF', 'GO:CC')) + 
+  facet_wrap(~source, scales = 'free', ncol = 1)
+plot_enrichment_results(degs_enrich$`protein_1:0_down`$result, highlight = F, sources = c('REAC', 'KEGG', 'WP', 'CORUM', 'GO:BP', 'GO:MF', 'GO:CC')) + 
+  facet_wrap(~source, scales = 'free', ncol = 1)
+plot_enrichment_results(degs_enrich$`RNA_2:0_down`$result, highlight = F, sources = c('REAC', 'KEGG', 'WP', 'CORUM', 'GO:BP', 'GO:MF', 'GO:CC')) + 
+  facet_wrap(~source, scales = 'free', ncol = 1)
+plot_enrichment_results(degs_enrich$`protein_2:0_down`$result, highlight = F, sources = c('REAC', 'KEGG', 'WP', 'CORUM', 'GO:BP', 'GO:MF', 'GO:CC')) + 
+  facet_wrap(~source, scales = 'free', ncol = 1)
+plot_enrichment_results(degs_enrich$`RNA_2:1_down`$result, highlight = F, sources = c('REAC', 'KEGG', 'WP', 'CORUM', 'GO:BP', 'GO:MF', 'GO:CC')) + 
+  facet_wrap(~source, scales = 'free', ncol = 1)
+plot_enrichment_results(degs_enrich$`protein_2:1_down`$result, highlight = F, sources = c('REAC', 'KEGG', 'WP', 'CORUM', 'GO:BP', 'GO:MF', 'GO:CC')) + 
+  facet_wrap(~source, scales = 'free', ncol = 1)
+plot_enrichment_results(degs_enrich$`protein_2:2_down`$result, highlight = F, sources = c('REAC', 'KEGG', 'WP', 'CORUM', 'GO:BP', 'GO:MF', 'GO:CC')) + 
+  facet_wrap(~source, scales = 'free', ncol = 1)
+plot_enrichment_results(degs_enrich$`RNA_2:2_down`$result, highlight = F, sources = c('REAC', 'KEGG', 'WP', 'CORUM', 'GO:BP', 'GO:MF', 'GO:CC')) + 
+  facet_wrap(~source, scales = 'free', ncol = 1)
+
+enrichment_barplot(degs_enrich, pth = .05, cols = fc_cols, source_list = c('GO:BP', 'GO:MF', 'GO:CC', 'REAC', 'KEGG', 'WP', 'CORUM')) + 
+  ggtitle('Only significant terms')
+ggsave('res/annotation/enrichment_number_terms_no_tf_mirna.pdf', width = 10, height = 8)
+ggsave('res/annotation/enrichment_number_terms_no_tf_mirna.png', width = 10, height = 8)
+
+# pdf('res/annotation/fc_ht/rna_22_up.pdf', width = 4, height = 20)
+# plot_fc_heatmap(res = degs_enrich$`RNA_2:2_up`, 
+#                 deg = multi_omics, 
+#                 # source_list = c('GO:BP', 'GO:MF', 'GO:CC', 'REAC', 'KEGG', 'WP', 'CORUM'),
+#                 source_list = c('REAC', 'KEGG', 'WP', 'CORUM'),
+#                 genes_number = 20,
+#                 omics = 'RNA',
+#                 karyo = '2:2', 
+#                 direction = 'up',
+#                 ann_colors = source_colors) %>% 
+#   ggplotify::as.ggplot()
+# dev.off()
+# 
+# plot_fc_heatmap(res = degs_enrich$`RNA_1:0_down`, 
+#                 deg = multi_omics, 
+#                 # source_list = c('GO:BP', 'GO:MF', 'GO:CC', 'REAC', 'KEGG', 'WP', 'CORUM'), 
+#                 source_list = c('REAC', 'KEGG', 'WP', 'CORUM'), 
+#                 genes_number = 10,
+#                 omics = 'RNA',
+#                 karyo = '1:0', 
+#                 direction = 'down',
+#                 ann_colors = source_colors)
+# 
+# plot_fc_heatmap(res = degs_enrich$`RNA_1:0_up`, 
+#                 deg = multi_omics, 
+#                 source_list = c('GO:BP', 'GO:MF', 'GO:CC', 'REAC', 'KEGG', 'WP', 'CORUM'),
+#                 # source_list = c('REAC', 'KEGG', 'WP', 'CORUM'), 
+#                 genes_number = 0,
+#                 omics = 'RNA',
+#                 karyo = '1:0', 
+#                 direction = 'down',
+#                 pth = .05,
+#                 ann_colors = source_colors)
+# 
+# plot_fc_heatmap(res = degs_enrich$`protein_2:1_up`, 
+#                 deg = multi_omics, 
+#                 source_list = c('GO:MF', 'GO:CC', 'GO:BP', 'REAC', 'KEGG', 'WP'), 
+#                 pth = .05, 
+#                 genes_number = 0, 
+#                 karyo = '2:1', 
+#                 omics = 'protein', 
+#                 direction = 'up', 
+#                 ann_colors = source_colors)
+# 
+# plot_fc_heatmap(res = degs_enrich$`protein_2:2_up`, 
+#                 deg = multi_omics, 
+#                 source_list = c('GO:MF', 'GO:CC', 'GO:BP', 'REAC', 'KEGG', 'WP', 'CORUM'), 
+#                 pth = .05, 
+#                 genes_number = 0, 
+#                 karyo = '2:2', 
+#                 omics = 'protein', 
+#                 direction = 'up', 
+#                 ann_colors = source_colors)
+# 
+# plot_fc_heatmap(res = degs_enrich$`RNA_2:2_down`, 
+#                 deg = multi_omics, 
+#                 source_list = c('GO:MF', 'GO:CC', 'GO:BP', 'REAC', 'KEGG', 'WP', 'CORUM'), 
+#                 pth = .05, 
+#                 genes_number = 0, 
+#                 karyo = '2:2', 
+#                 omics = 'RNA', 
+#                 direction = 'down', 
+#                 ann_colors = source_colors)
+# 
+# plot_fc_heatmap(res = degs_enrich$`RNA_2:1_down`, 
+#                 deg = multi_omics, 
+#                 source_list = c('GO:MF', 'GO:CC', 'GO:BP', 'REAC', 'KEGG', 'WP', 'CORUM'), 
+#                 pth = .05, 
+#                 genes_number = 0, 
+#                 karyo = '2:1', 
+#                 omics = 'RNA', 
+#                 direction = 'down', 
+#                 ann_colors = source_colors)
+# 
+# plot_fc_heatmap(res = degs_enrich$`RNA_2:1_up`, 
+#                 deg = multi_omics, 
+#                 source_list = c('GO:MF', 'GO:CC', 'GO:BP', 'REAC', 'KEGG', 'WP', 'CORUM'), 
+#                 pth = .05, 
+#                 genes_number = 0, 
+#                 karyo = '2:1', 
+#                 omics = 'RNA', 
+#                 direction = 'up', 
+#                 ann_colors = source_colors)
+# 
+# plot_fc_heatmap(res = degs_enrich$`protein_2:1_down`, 
+#                 deg = multi_omics, 
+#                 source_list = c('GO:MF', 'GO:CC', 'GO:BP', 'REAC', 'KEGG', 'WP'), 
+#                 pth = .05, 
+#                 genes_number = 0, 
+#                 karyo = '2:1', 
+#                 omics = 'protein', 
+#                 direction = 'down', 
+#                 ann_colors = source_colors)
+
+plot_terms_fc(res = degs_enrich$`protein_2:1_down`, 
+              deg = multi_omics, 
+              source_list = c('GO:MF', 'GO:CC', 'GO:BP', 'REAC', 'KEGG', 'WP'), 
+              pth = .05, 
+              genes_number = 0, 
+              karyo = '2:1', 
+              omics = 'protein', 
+              direction = 'down') 
+
+plot_terms_fc(res = degs_enrich$`RNA_1:0_down`, 
+              deg = multi_omics, 
+              # source_list = c('GO:MF', 'GO:CC', 'GO:BP', 'REAC', 'KEGG', 'WP'), 
+              source_list = 'REAC',
+              pth = .05, 
+              genes_number = 0, 
+              karyo = '1:0', 
+              omics = 'RNA') 
+
+
+
+
+
+
+
+
+# different gene set --------
 # genes with the same sign between rna and protein
 
 same_sign_genes = multi_omics_cls %>% 
@@ -319,6 +504,27 @@ same_sign_genes_enrich = lapply(same_sign_genes, function(x) {
   )
 })
 saveRDS(same_sign_genes_enrich, 'data/enrichment_results/same_sign_genes_enrich.rds')
+
+same_sign_genes_enrich = readRDS('data/enrichment_results/same_sign_genes_enrich.rds')
+
+plot_enrichment_results(same_sign_genes_enrich$`both negative_1:0`$result, 
+                        sources =  c('GO:BP', 'GO:MF', 'GO:CC', 'KEGG', 'REAC', 'WP', 'CORUM'), 
+                        highlight = F)
+
+plot_enrichment_results(same_sign_genes_enrich$`both positive_1:0`$result,
+                        sources =  c('GO:BP', 'GO:MF', 'GO:CC', 'KEGG', 'REAC', 'WP', 'CORUM'), 
+                        highlight = F)
+
+plot_enrichment_results(same_sign_genes_enrich$`both negative_2:2`$result,
+                        sources =  c('GO:BP', 'GO:MF', 'GO:CC', 'KEGG', 'REAC', 'WP', 'CORUM'), 
+                        highlight = F)
+
+plot_enrichment_results(same_sign_genes_enrich$`both negative_2:1`$result,
+                        sources =  c('GO:BP', 'GO:MF', 'GO:CC', 'KEGG', 'REAC', 'WP', 'CORUM'), 
+                        highlight = F)
+
+
+
 
 # plotting 
 # upset plot
