@@ -1,6 +1,6 @@
 # plot utils 
 expr_cols = setNames(
-  nm = c('up', 'down', 'not differential'), 
+  nm = c('up', 'down', 'not differential/non significant'), 
   object = c('firebrick', 'darkblue', 'grey30')
 )
 
@@ -10,12 +10,12 @@ classify_genes = function(x, pth = .05, fth = .75) {
     ungroup %>% 
     mutate(significance = ifelse(adj_pval <= pth, 'significant', 'ns')) %>% 
     mutate(fc_cls = case_when(
-      (significance == 'significant' & lfc >= -fth & lfc <= fth) ~ 'not differential',
+      (significance == 'significant' & lfc >= -fth & lfc <= fth) ~ 'not differential/non significant',
       (lfc <= -fth & significance == 'significant') ~ 'down', 
       (lfc >= fth & significance == 'significant') ~ 'up', 
-      .default = 'ns'
+      .default = 'not differential/non significant'
     )) %>% 
-    mutate(fc_cls = factor(fc_cls, levels = c('up', 'down', 'not differential', 'ns')))
+    mutate(fc_cls = factor(fc_cls, levels = c('up', 'down', 'not differential/non significant')))
   
 }
 
@@ -38,7 +38,7 @@ plot_volcano = function(x, omic_list, cols, pth = .05, fth = .75) {
     theme_bw() + 
     facet_grid(omic~karyotype, scales = 'free_y') + 
     scale_color_manual(values = cols) + 
-    scale_alpha_manual(values = setNames(c(1, .3), c('significant', 'ns'))) + 
+    scale_alpha_manual(values = setNames(c(1, .1), c('significant', 'ns'))) + 
     guides(alpha = guide_legend(theme = theme(legend.position = 'None'), 
                                 title = 'Significance class (padj <= 0.05)'), 
            color = guide_legend(title = 'FC class')) + 
@@ -68,25 +68,45 @@ multi_omics_fc_plt = function(x, gene, colors, fth = .75) {
 # plot multivariate among the two omics
 bg_cols = c('Same sign' = '#A5C89E', 'Opposite sign' = '#E5BA41')
 
+pt_colors = setNames(
+  nm = c("RNA: ns, protein: ns", "RNA: ns, protein: significant", "RNA: significant, protein: ns", "RNA: significant, protein: significant"),
+  object = c('grey30', '#EE6983', '#120078', '#92487A') #'#441752' #
+)
+
+
 plot_omics_comparison = function(x, 
                                  filter = T, 
-                                 bg_colors
+                                 bg_colors, 
+                                 color_significance = F,
+                                 pt_colors
+                                 
 ) {
   
   if(filter == TRUE) {
     x = x %>% 
       filter(sign_RNA =='significant', sign_prot=='significant')
     
-    title = 'genes significant in both tests'
+    title = 'Genes significant in both tests'
   } else {
-    title = 'all genes'
+    title = 'All genes'
   }
   
-  x %>%
-    ggplot(aes(
-      x = lfc_RNA, 
-      y = lfc_protein
-    )) + 
+  if(color_significance == TRUE) {
+    p =   x %>%
+      ggplot(aes(
+        x = lfc_RNA, 
+        y = lfc_protein, 
+        color = significance_all
+      ))
+  } else {
+    p = x %>%
+      ggplot(aes(
+        x = lfc_RNA, 
+        y = lfc_protein
+      ))
+  }
+  
+  p = p + 
     geom_rect(data = 
                 data.frame(xmin = 0, 
                            xmax = Inf, 
@@ -151,6 +171,14 @@ plot_omics_comparison = function(x,
     theme(legend.position = 'bottom') + 
     ggtitle(title)
   
+  if(color_significance == TRUE) {
+    p = p + 
+      scale_color_manual(values = pt_colors) + 
+      guides(color = guide_legend(title = 'Significance', 
+                                  ncol = 2))
+  }
+  
+  return(p)
 }
 
 
@@ -250,6 +278,62 @@ plot_sankey = function(x,
     theme_light() + 
     facet_wrap(as.formula(paste0('~', facet)), scales = 'free')
     # facet_wrap(~ {{ facet }}, scales = 'free')
+}
+
+
+# identify specific set of genes 
+
+identify_conserved_genes = function(x, 
+                                    omic) {
+  gene_group = x %>% 
+    filter(omic == !!omic) %>%
+    filter(significance == 'significant') %>% 
+    select(name, karyotype, fc_cls) %>% 
+    pivot_wider(names_from = karyotype, values_from = fc_cls) %>% 
+    filter(!if_any(everything(), is.na)) %>% 
+    rowwise() %>%
+    filter(n_distinct(c_across(-c(name))) == 1) %>%
+    ungroup() %>% 
+    mutate(
+      group = case_when(
+        `2:2` == 'up' ~ 'Always up',
+        `2:2` == 'down' ~ 'Always down', 
+        .default = 'Always not differential'
+      )
+    ) %>% 
+    dplyr::select(name, group)
+  
+  x = x %>% 
+    filter(omic == !! omic) %>% 
+    full_join(., gene_group, by = 'name') %>% 
+    mutate(group = ifelse(is.na(group), 'not conserved', group))
+  
+  return(x)
+  
+}
+
+identify_trend_genes = function(x, 
+                                omic) {
+  gene_group = x %>% 
+    filter(omic == !!omic) %>%
+    filter(significance == 'significant') %>% 
+    select(name, karyotype, fc_cls) %>% 
+    pivot_wider(names_from = karyotype, values_from = fc_cls) %>% 
+    filter(`1:0` == 'down', 
+           `2:1` == 'up', 
+           `2:2` == 'up') %>% 
+    mutate(
+      group = 'Following trend'
+    ) %>% 
+    select(name, group)
+  
+  x = x %>% 
+    filter(omic == !! omic) %>% 
+    full_join(., gene_group, by = 'name') %>% 
+    mutate(group = ifelse(is.na(group), 'Not following', group))
+  
+  return(x)
+  
 }
 
 
@@ -723,17 +807,33 @@ plot_fc_heatmap = function(res,
 
 # RUNNING OF GSEA ON DIFFERENT DATABASES ------
 
+# RUNNING OF GSEA ON DIFFERENT DATABASES ------
+
+conversion_tb = tibble(
+  organism = c('human', 'mouse'),
+  OrgDb = c('org.Hs.eg.db', 'org.Mm.eg.db'), 
+  WP = c('Homo sapiens', "Mus musculus"), 
+  kegg = c('hsa', 'mmu')
+)
+
+
 run_gsea = function(genes, 
-                    databases = c('GO', 'KEGG', 'WP', 'REAC')) {
+                    databases = c('GO', 'KEGG', 'WP', 'REAC'), 
+                    org, 
+                    p_th = .1) {
   
   res = list()
   
   if('GO' %in% databases) {
     
+    db = conversion_tb %>% 
+      filter(organism == org) %>% 
+      pull(OrgDb)
+    
     res$GO <- gseGO(
       geneList = genes,
-      OrgDb = org.Hs.eg.db, 
-      pvalueCutoff = 0.05, 
+      OrgDb = db, 
+      pvalueCutoff = p_th, 
       ont = "ALL",
       minGSSize = 10,
       maxGSSize = 250,
@@ -746,9 +846,9 @@ run_gsea = function(genes,
   if('REAC' %in% databases) {
     res$REAC <- gsePathway(
       geneList = genes,
-      organism = "human",
+      organism = organism,
       pAdjustMethod = "BH", 
-      pvalueCutoff = 0.05, 
+      pvalueCutoff = p_th, 
       minGSSize = 10,
       maxGSSize = 250,
       by = "fgsea"
@@ -757,21 +857,31 @@ run_gsea = function(genes,
   }
   
   if('WP' %in% databases) {
+    
+    db = conversion_tb %>% 
+      filter(organism == org) %>% 
+      pull(WP)
+    
     res$WP = gseWP(genes, 
-                   organism = "Homo sapiens", 
-                   pvalueCutoff = 0.05, 
+                   organism = db, 
+                   pvalueCutoff = p_th, 
                    minGSSize = 10,
                    maxGSSize = 250,
                    pAdjustMethod = "BH")
   }
   
   if('KEGG' %in% databases) {
+    
+    db = conversion_tb %>% 
+      filter(organism == org) %>% 
+      pull(kegg)
+    
     res$KEGG <- gseKEGG(
       geneList = genes,
-      pvalueCutoff = 0.05,
+      pvalueCutoff = p_th,
       minGSSize = 10,
       maxGSSize = 250,
-      organism = "hsa",
+      organism = db,
       pAdjustMethod = "BH"
     )
   }
@@ -788,7 +898,189 @@ plot_nes = function(x) {
     scale_color_viridis_c(option = 'viridis') + 
     theme_light()
 }
+
+
+run_ORA = function(ggenes, 
+                   databases = c('GO', 'KEGG', 'WP', 'REAC'), 
+                   org, 
+                   p_th = .1) {
   
+  orgdb = conversion_tb %>% 
+    filter(organism == org) %>% 
+    pull(OrgDb)
+  
+  res = list()
+  
+  if('GO' %in% databases) {
+    
+    db = conversion_tb %>% 
+      filter(organism == org) %>% 
+      pull(OrgDb)
+    
+    res$GO <- enrichGO(
+      gene = ggenes,
+      # geneList = genes, 
+      OrgDb = db, 
+      pvalueCutoff = p_th, 
+      ont = "ALL",
+      minGSSize = 10,
+      maxGSSize = 500,
+      keyType = "ENTREZID",
+      pAdjustMethod = "BH"
+    )
+  }
+  
+  if('REAC' %in% databases) {
+    res$REAC <- enrichPathway(
+      gene = ggenes,
+      organism = org,
+      pAdjustMethod = "BH", 
+      pvalueCutoff = p_th, 
+      minGSSize = 10,
+      maxGSSize = 250
+    )
+    
+  }
+  
+  if('WP' %in% databases) {
+    
+    db = conversion_tb %>% 
+      filter(organism == org) %>% 
+      pull(WP)
+    
+    res$WP = enrichWP(
+      gene = ggenes, 
+      organism = db, 
+      pvalueCutoff = p_th, 
+      minGSSize = 10,
+      maxGSSize = 250,
+      pAdjustMethod = "BH")
+  }
+  
+  if('KEGG' %in% databases) {
+    
+    db = conversion_tb %>% 
+      filter(organism == org) %>% 
+      pull(kegg)
+    
+    res$KEGG <- enrichKEGG(
+      gene = ggenes,
+      pvalueCutoff = p_th,
+      minGSSize = 10,
+      maxGSSize = 250,
+      organism = db,
+      pAdjustMethod = "BH"
+    )
+  }
+  
+  return(res)
+}
+
+
+# run_gsea = function(genes, 
+#                     databases = c('GO', 'KEGG', 'WP', 'REAC')) {
+#   
+#   res = list()
+#   
+#   if('GO' %in% databases) {
+#     
+#     res$GO <- gseGO(
+#       geneList = genes,
+#       OrgDb = org.Hs.eg.db, 
+#       pvalueCutoff = 0.05, 
+#       ont = "ALL",
+#       minGSSize = 10,
+#       maxGSSize = 250,
+#       keyType = "ENTREZID",
+#       pAdjustMethod = "BH",
+#       by = "fgsea"
+#     )
+#   }
+#   
+#   if('REAC' %in% databases) {
+#     res$REAC <- gsePathway(
+#       geneList = genes,
+#       organism = "human",
+#       pAdjustMethod = "BH", 
+#       pvalueCutoff = 0.05, 
+#       minGSSize = 10,
+#       maxGSSize = 250,
+#       by = "fgsea"
+#     )
+#     
+#   }
+#   
+#   if('WP' %in% databases) {
+#     res$WP = gseWP(genes, 
+#                    organism = "Homo sapiens", 
+#                    pvalueCutoff = 0.05, 
+#                    minGSSize = 10,
+#                    maxGSSize = 250,
+#                    pAdjustMethod = "BH")
+#   }
+#   
+#   if('KEGG' %in% databases) {
+#     res$KEGG <- gseKEGG(
+#       geneList = genes,
+#       pvalueCutoff = 0.05,
+#       minGSSize = 10,
+#       maxGSSize = 250,
+#       organism = "hsa",
+#       pAdjustMethod = "BH"
+#     )
+#   }
+#   
+#   return(res)
+# }
+
+plot_nes = function(x) {
+  x %>% 
+    ggplot(aes(y = Description, 
+               x = NES, 
+               color = p.adjust)) + 
+    geom_point() + 
+    scale_color_viridis_c(option = 'viridis') + 
+    theme_light()
+}
+  
+
+# Compensation score ----- 
+
+define_th = function(df, 
+                     q = .5, 
+                     karyo) {
+  
+  quant = df %>%
+    filter(karyotype == karyo) %>% 
+    dplyr::mutate(s = sign(CS)) %>%
+    dplyr::group_by(s, omic) %>%
+    dplyr::summarise(q = quantile(CS, q)) %>%
+    ungroup() %>% 
+    dplyr::select(omic, q) %>% 
+    split(.$omic)
+  
+  quant = lapply(quant, function(x) {x$q %>% sort()}) 
+  
+  df_groups <- df %>%
+    filter(karyotype == karyo) %>% 
+    dplyr::select(-lfc) %>% 
+    pivot_wider(names_from = omic, values_from = CS) %>% 
+    mutate(reg_group = case_when(
+      # Group 1: High RNA CS (>65th) and Low Protein CS (<35th)
+      RNA > quant$RNA[2] & protein < quant$protein[1] ~ "(RNA-heavy)",
+      RNA > quant$RNA[2] & protein > quant$protein[2] ~ "(RNA-prot heavy)",
+      
+      # Group 2: Low RNA CS (<35th) and High Protein CS (>65th)
+      RNA < quant$RNA[1] & protein > quant$protein[2] ~ "(Prot-heavy)",
+      RNA < quant$RNA[1] & protein < quant$protein[1] ~ "(RNA-Prot light)",
+      
+      TRUE ~ "Intermediate/Other"
+    ))
+  
+  return(df_groups)
+  
+}
+
 # enrichment_heatmap = function(x, source_list, pth = .05, genes_number = 4, highlight = F) {
 #   
 #   df = x$result
