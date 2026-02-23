@@ -14,28 +14,44 @@ source('organoids_analysis/R/plot_utils/dge_utils_and_plots.R')
 # source('/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj/organoids_analysis/R/plot_utils/dge_utils_and_plots.R')
 
 # multi_omics = readRDS('/orfeo/cephfs/scratch/cdslab/gsantacatterina/organoids_proj/results/lfc_prot_and_rna_bind.rds')
-multi_omics = readRDS('data/lfc_prot_and_rna_bind.rds')
 
-# volcano plot of expression
+# loading and preprocessing data -------
+
+multi_omics = readRDS('data/de_res/lfc_prot_and_rna_bind.rds') %>% na.omit()
+multi_omics$adj_pval = p.adjust(multi_omics$pval, method = "BH")
+multi_omics = multi_omics %>% 
+  dplyr::group_by(name, karyotype) %>% 
+  dplyr::mutate(n = length(unique(omic))) %>% 
+  dplyr::filter(n == 2) %>% 
+  dplyr::ungroup()
+
+# multi_omics %>% 
+#   ggplot(mapping = aes(x = karyotype, y = lfc, fill = omic)) +
+#   geom_boxplot()
+
 pth = .05
 fth = .75
 
-multi_omics = classify_genes(multi_omics)
+multi_omics = classify_genes(multi_omics, pth = pth, fth = fth)
 multi_omics = multi_omics %>% 
   mutate(omic = factor(omic, levels = c('RNA', 'protein')))
+# plots -----
 
-volcano = plot_volcano(multi_omics, omic = c('RNA', 'protein'), cols = expr_cols) + 
+## volcano plot of expression ----
+
+volcano = plot_volcano(multi_omics, omic = c('RNA', 'protein'), cols = expr_cols, pth = pth, fth = fth) + 
   xlab('log FC')
 
 # add the protein and rna facet colors
 ggsave(plot = volcano, filename = 'res/volcano_rna_prot.png', width = 10,  height = 6)
 ggsave(plot = volcano, filename = 'res/volcano_rna_prot.pdf', width = 10,  height = 6)
 
+## barplot -----
 # summary statistics --> how many DEGs per karyotype and omic?
 
 barplot_multiomics = multi_omics %>%
   filter(!is.na(lfc)) %>%
-  filter(significance == 'significant') %>% 
+  # filter(significance == 'significant') %>% 
   group_by(omic, karyotype, fc_cls) %>%
   ggplot(aes(fc_cls, fill = fc_cls)) +
   geom_bar(stat = 'count', position = 'dodge') +
@@ -47,8 +63,8 @@ barplot_multiomics = multi_omics %>%
   theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust = 0.5)) + 
   labs(x = 'FC class', 
        y = 'Number of genes') 
-ggsave('res/number_of_degs_omic.png', width = 10, height = 6)
-ggsave('res/number_of_degs_omic.png', width = 10, height = 6)
+ggsave('res/number_of_degs_omic.png', plot = barplot_multiomics, width = 10, height = 6)
+ggsave('res/number_of_degs_omic.png', plot = barplot_multiomics, width = 10, height = 6)
 
 pt_l = 'AAAA
         AAAA
@@ -89,7 +105,7 @@ ggsave('res/genes_fc/akt1_fc.png', width = 8, height = 6)
 # might add the confidence intervals or a * to indicate the significance
 
 # checking how many results do we have per group
-
+## scatter fc ----
 # plot the fc 
 multi_omics_cls = multi_omics %>% 
   filter(!is.na(lfc)) %>% 
@@ -106,13 +122,21 @@ multi_omics_cls = multi_omics %>%
     (!is.na(lfc_RNA) & is.na(lfc_protein) & lfc_RNA < 0) ~ 'only RNA estimated (negative)'
   )) %>% 
   mutate(sign_RNA = ifelse(adj_pval_RNA <= pth, 'significant', 'ns')) %>% 
-  mutate(sign_prot = ifelse(adj_pval_protein <= pth, 'significant', 'ns'))
+  mutate(sign_prot = ifelse(adj_pval_protein <= pth, 'significant', 'ns')) %>% 
+  mutate(significance_all = paste0('RNA: ', sign_RNA, ', protein: ', sign_prot)) %>% 
+  mutate(significance_all = factor(significance_all, levels = c(
+    "RNA: significant, protein: significant",
+    "RNA: significant, protein: ns", 
+    "RNA: ns, protein: significant", 
+    "RNA: ns, protein: ns"
+    )))
 
-plot_omics_comparison(multi_omics_cls, filter = T, bg_colors = bg_cols)
+plot_omics_comparison(multi_omics_cls, filter = T, bg_colors = bg_cols, color_significance = F)
 ggsave('res/rna_vs_protein_fc_significant_only.png', width = 10, height = 10)  
 ggsave('res/rna_vs_protein_fc_significant_only.pdf', width = 10, height = 10) 
 
-plot_omics_comparison(multi_omics_cls, filter = F, bg_colors = bg_cols)
+# nb: pt_colors might be a divergent scale
+plot_omics_comparison(multi_omics_cls, filter = F, bg_colors = bg_cols, color_significance = T, pt_colors = pt_colors)
 ggsave('res/rna_vs_protein_fc_all.png', width = 10, height = 10)  
 ggsave('res/rna_vs_protein_fc_all.pdf', width = 10, height = 10) 
 
@@ -145,6 +169,109 @@ ggsave('res/fc_significant_density.png', width = 10, height = 6)
 ggsave('res/fc_significant_density.pdf', width = 10, height = 6)
 
 plot_barplots(multi_omics, cols = expr_cols)
+
+# interesting gene sets ------
+
+## functional gene set -- homeostatis ----
+
+homeostatis_genes = clusterProfiler::read.gmt('data/GOBP_HOMEOSTATIC_PROCESS.v2026.1.Hs.gmt')
+homeostatis_genes = homeostatis_genes$gene %>% unique
+
+homeostatis_genes_barplot = multi_omics %>%
+  filter(!is.na(lfc)) %>%
+  filter(name %in% homeostatis_genes) %>%
+  # filter(significance == 'significant') %>% 
+  group_by(omic, karyotype, fc_cls) %>%
+  ggplot(aes(fc_cls, fill = fc_cls)) +
+  geom_bar(stat = 'count', position = 'dodge') +
+  theme_bw() + 
+  facet_grid(omic~karyotype, scales = 'free') + 
+  scale_fill_manual(values = expr_cols) +
+  coord_flip() + 
+  guides(fill = guide_legend(title = 'FC class')) + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust = 0.5)) + 
+  labs(x = 'FC class', 
+       y = 'Number of genes') 
+ 
+homeostatis_genes_barplot  
+
+# TODO
+# guarda i segni dei FC dei geni concordi in rna e prot
+
+## identifying genes for omics that have the same sign among the karyotypes ----
+conserved_genes = lapply(c('RNA', 'protein'), function(om){
+  identify_conserved_genes(multi_omics, om)
+})
+names(conserved_genes) = c('RNA', 'protein')
+
+conserved_genes = lapply(conserved_genes, function(x) {
+  x %>% 
+    filter(group != 'not conserved')
+})
+
+# ORA on the gene set
+conserved_gene_list = lapply(conserved_genes, function(x) {
+  x$name %>% unique
+})
+
+p1 = multi_omics_fc_plt(multi_omics_plot, gene = 'KIF2A', colors = c('RNA' = '#296374', 'protein' = '#D02752'))
+p2 = multi_omics_fc_plt(multi_omics_plot, gene = 'GALK1', colors = c('RNA' = '#296374', 'protein' = '#D02752')) 
+
+p1 + p2  
+
+conserved_gene_enrichment = lapply(conserved_gene_list, function(geneset) {
+  gprofiler2::gost(
+    geneset, 
+    organism = 'hsapiens', 
+    sources = c('GO', 'KEGG', 'REAC', 'WP', 'TF', 'MIRNA', 'CORUM'), 
+    ordered_query = F, 
+    exclude_iea = T, 
+    measure_underrepresentation = F, 
+    evcodes = T, 
+    correction_method = 'fdr', 
+    domain_scope = 'annotated', 
+    highlight = T
+  )
+})
+
+ggvenn::ggvenn(conserved_gene_list)
+
+## identifying genes following the "trend" (down in 1:0, up with higher ploidy)
+genes_following_positive_trend = lapply(c('RNA', 'protein'), function(x) {
+  identify_trend_genes(multi_omics, omic = x)
+})
+
+names(genes_following_positive_trend) = c('RNA', 'protein')
+
+genes_following_positive_trend = lapply(genes_following_positive_trend, function(x) {
+  x %>% 
+    filter(group != 'Not following')
+})
+
+# ORA on the gene set
+genes_following_positive_trend_list = lapply(genes_following_positive_trend, function(x) {
+  x$name %>% unique
+})
+
+genes_following_positive_trend_enrichment = lapply(genes_following_positive_trend_list, function(geneset) {
+  gprofiler2::gost(
+    geneset, 
+    organism = 'hsapiens', 
+    sources = c('GO', 'KEGG', 'REAC', 'WP', 'TF', 'MIRNA', 'CORUM'), 
+    ordered_query = F, 
+    exclude_iea = T, 
+    measure_underrepresentation = F, 
+    evcodes = T, 
+    correction_method = 'fdr', 
+    domain_scope = 'annotated', 
+    highlight = T
+  )
+})
+
+genes_following_positive_trend_enrichment$protein$result %>% view
+
+ggvenn::ggvenn(genes_following_positive_trend_list)
+
 
 # fix karyotype and see which are the genes that are significant
 
@@ -255,10 +382,32 @@ ggsave('res/omic_sankey_classes.png', width = 10)
 ggsave('res/omic_sankey_classes.pdf', width = 10)
 plot_sankey(multi_omics, strat = 'karyotype', facet = 'omic', cols = sankey_cols)
 
+prot = multi_omics %>% filter(omic == 'protein')
+plot_sankey(prot, strat = 'karyotype', facet = 'omic', cols = sankey_cols) + 
+  ylim(0,100)
+
 plot_sankey(multi_omics_v2, strat = 'omic', facet = 'karyotype', cols = sankey_cols)  
 ggsave('res/karyotype_sankey_classes.png', width = 10)
 ggsave('res/karyotype_sankey_classes.pdf', width = 10)
 
+
+
+
+multi_omics %>% 
+  dplyr::filter(adj_pval <= .05) %>% 
+  dplyr::mutate(karyotype = factor(karyotype, levels = c("1:0", "2:0", "2:1", "2:2"))) %>% 
+  dplyr::mutate(karyotype = as.numeric(karyotype)) %>% 
+  dplyr::group_by(name, omic) %>% 
+  dplyr::arrange(karyotype) %>% 
+  dplyr::mutate(is_unsorted = is.unsorted(lfc)) %>% 
+  dplyr::filter(!is_unsorted) %>% 
+  #ggplot(mapping = aes(x = karyotype, y = lfc, group = name)) +
+  ggplot(mapping = aes(x = karyotype, y = lfc)) +
+  geom_point() +
+  geom_smooth(method = "loess") +
+  #geom_line() +
+  facet_wrap(~omic) +
+  geom_hline(yintercept = 0, colour = "indianred")
 
 # take a look to which genes are significant --> interesting groups
 # genes that are significant more or less expressed in all the karyotypes
