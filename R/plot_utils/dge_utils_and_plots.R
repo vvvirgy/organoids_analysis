@@ -846,7 +846,7 @@ run_gsea = function(genes,
   if('REAC' %in% databases) {
     res$REAC <- gsePathway(
       geneList = genes,
-      organism = organism,
+      organism = org,
       pAdjustMethod = "BH", 
       pvalueCutoff = p_th, 
       minGSSize = 10,
@@ -1043,6 +1043,26 @@ plot_nes = function(x) {
     theme_light()
 }
   
+extract_res = function(list_res, 
+                       db, 
+                       karyo = NULL, 
+                       omic = NULL) {
+  
+  if(!is.null(karyo)) {
+    list_res = list_res[grep(karyo, names(list_res), value = T)]
+  }
+  
+  if(!is.null(omic)) {
+    list_res = list_res[grep(omic, names(list_res), value = T)]
+  }
+  
+  tt = lapply(list_res %>% names, function(x) {
+    list_res[[x]][[db]]
+  })
+  names(tt) = names(list_res)
+  return(tt)
+}
+
 
 # Compensation score ----- 
 
@@ -1080,6 +1100,47 @@ define_th = function(df,
   return(df_groups)
   
 }
+
+# colors for plots
+category_colors <- c(
+  "(RNA-prot heavy)" = "#AD002AB2",
+  "(Prot-heavy)" = "#E18727B2",
+  "(RNA-heavy)" = "#20854Eb2",
+  "(RNA-Prot light)" = "#00468BB2",
+  "Intermediate/Other" = "gainsboro"
+)
+
+# from enrichment compute the CS for each found pathway
+
+
+
+
+# enrichment assembly plot after trees ------ 
+
+assebly_plots = function(enrich, 
+                         cls 
+) {
+  
+  enrich = Filter(Negate(is.null), enrich)
+  
+  cls = gsub('\\.', ' ', cls)
+  
+  if(length(enrich)) {
+    db = names(enrich)
+    
+    enrich = lapply(db, function(d) {
+      enrich[[d]] = enrich[[d]] + 
+        ggtitle(d)
+    })
+    
+    wrap_plots(enrich) + 
+      plot_annotation(title = cls)
+    
+  }
+  
+}
+
+
 
 # enrichment_heatmap = function(x, source_list, pth = .05, genes_number = 4, highlight = F) {
 #   

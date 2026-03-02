@@ -1,104 +1,34 @@
 rm(list = ls())
 .libPaths()
 library(tidyverse)
-# library(tidyplots)
-# library(googlesheets4)
 library(dplyr)
 library(boot)
 library(clusterProfiler)
 library(ReactomePA)
-
-# BiocManager::install('org.Hs.eg.db')
 library(org.Hs.eg.db)
+library(googlesheets4)
 source('/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj/organoids_analysis/R/plot_utils/dge_utils_and_plots.R')
 
-DATA_PATH = '/orfeo/cephfs/scratch/cdslab/gsantacatterina/organoids_proj/results'
-SCE_PATH = "/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj/data/scexp_karyo_all_organoids_filt.rds"
-META_PATH = "/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj/data/karyotypes_genes_filtered_scrna.rds"
 
-MIN_SAMPLES = 1
-
-# Get gene/karyotypes with at least two samples
-karyotypes_df_all = readRDS(META_PATH)
-karyotypes_df_good = karyotypes_df_all %>% 
-  dplyr::group_by(hgnc_symbol, karyotype) %>% 
-  dplyr::distinct() %>% 
-  dplyr::summarise(n = n()) %>% 
-  dplyr::filter(n >= MIN_SAMPLES) %>% 
-  dplyr::rename(name = hgnc_symbol)
-
-df_dna = readRDS(paste(DATA_PATH, "DNA_lfc.rds", sep = '/')) %>% dplyr::rename(DNA_lfc = lfc)
-
-df = readRDS(paste(DATA_PATH, "sf_psinorm_stable_FALSE/lfc_prot_and_rna_bind.rds", sep = '/'))  
-
-df = df %>% 
-  dplyr::group_by(karyotype, name) %>% 
-  dplyr::filter(n() == 2)
-
-df = df %>% 
-  dplyr::left_join(karyotypes_df_good) %>% 
-  na.omit()
-
-df_dna = df_dna %>% 
-  dplyr::left_join(karyotypes_df_good) %>% 
-  na.omit()
-
-df %>% 
-  dplyr::select(name, karyotype) %>% 
-  dplyr::distinct() %>% 
-  dplyr::group_by(name) %>% 
-  dplyr::summarise("n_distinct_karyotypes" = n()) %>% 
-  dplyr::count(n_distinct_karyotypes) %>% 
-  dplyr::rename(n_genes = n) 
-
-df %>% 
-  dplyr::select(name, karyotype) %>% 
-  dplyr::distinct() %>% 
-  dplyr::ungroup() %>% 
-  dplyr::select(karyotype) %>% 
-  dplyr::count(karyotype) 
-
-df = df %>% 
-  dplyr::filter(omic != "DNA")
-
-df = df %>% 
-  ungroup() %>% 
-  # dplyr::left_join(df_dna %>% dplyr::select(!omic), by = join_by("name" == "name", "karyotype" == "karyotype")) %>% 
-  dplyr::left_join(df_dna) %>% 
-  dplyr::select(-n) 
-
-df = df %>%
-  # mutate(CS = DNA_lfc - lfc) #%>%
-  dplyr::mutate(CS = ifelse(DNA_lfc > 0, DNA_lfc - lfc, lfc - DNA_lfc))
-
-df_mean_CS = df %>% 
-  dplyr::group_by(name, omic) %>% 
-  dplyr::summarise(mean_CS = mean(CS)) %>% 
-  tidyr::pivot_wider(values_from = mean_CS, names_from = omic)
-
-df %>% 
-  ggplot(aes(
-    x = karyotype, 
-    y = CS,
-    fill = omic
-  )) + 
-  geom_violin()
-
-df %>% 
-  dplyr::select(karyotype, name, CS, omic, DNA_lfc) %>% 
-  tidyr::pivot_wider(values_from = CS, names_from = omic) %>% 
-  ggplot(mapping = aes(x = RNA, y = protein)) +
-  geom_point() + 
-  facet_wrap(~karyotype) + 
-  geom_vline(xintercept = 0, linetype = 'dashed', color = 'red') + 
-  geom_hline(yintercept = 0, linetype = 'dashed', color = 'red')
-
-saveRDS(df, 'data/compensation/cs_results.rds')
-
-# dividing the genes in different groups
-
+# dividing the genes in different groups ---- 
+df = readRDS('data/compensation/cs_results.rds')
 karyos = c('1:0', '2:0', '2:1', '2:2')
 
+df %>% 
+  ggplot(
+    aes(
+      x = karyotype, 
+      y = CS, 
+      fill = omic
+    )
+  ) + 
+  geom_violin() + 
+  theme_bw() +
+  ggpubr::stat_compare_means(comparisons = list(c('1:0', '2:1')), ) + 
+  facet_wrap(vars(omic))
+
+
+# setting the thr karyotype specific 
 df_groups = lapply(karyos, function(x) {
   define_th(df, q = .5, karyo = x)  
 })
@@ -106,9 +36,27 @@ df_groups = lapply(karyos, function(x) {
 df_groups = df_groups %>% 
   bind_rows()
 
+# checking the effect of compensation
+df_groups %>% 
+  group_by(name) %>% 
+  filter(n() == 4) %>% 
+  # filter(name == 'PTGFRN') %>% 
+  mutate(karyotype = factor(karyotype), 
+         karyo_num = as.numeric(karyotype)) %>% 
+  ggplot(aes(
+    x = karyo_num, 
+    y = RNA, 
+    color = reg_group
+  )) + 
+  geom_point() +
+  # geom_line() + 
+  scale_color_manual(values = category_colors) +
+  theme_bw()
+                                                         
+# number of genes per karyotype in each reg group
 df_groups %>% 
   group_by(karyotype, reg_group) %>% 
-  count() %>% 
+  dplyr::count() %>% 
   ggplot(aes(
     x = reg_group, 
     y = n, 
@@ -116,8 +64,16 @@ df_groups %>%
   )) + 
   geom_bar(stat = 'identity', position = 'dodge') + 
   theme_bw() + 
-  scale_fill_brewer(palette = 'Pastel2')
+  scale_fill_brewer(palette = 'Pastel2') + 
+  labs(
+    x = 'Regulatory groups', 
+    y = 'Number of genes'
+  ) + 
+  theme(legend.position = 'bottom') 
+ggsave('res/compensation_score/genes_cs_by_karyo.png', width = 8, height = 6)
+ggsave('res/compensation_score/genes_cs_by_karyo.pdf', width = 8, height = 6)
 
+# plot the scatter of CS per omic
 category_colors <- c(
   "(RNA-prot heavy)" = "#AD002AB2",
   "(Prot-heavy)" = "#E18727B2",
@@ -134,12 +90,156 @@ df_groups %>%
   scale_color_manual(values = category_colors) +
   theme_bw() +
   labs(x = "RNA CS", y = "Protein CS") + 
-  facet_wrap(~karyotype)
+  facet_wrap(~karyotype) + 
+  guides(color = guide_legend(title = 'Regulatory group', 
+                              position = 'bottom', 
+                              nrow = 2))
+ggsave('res/compensation_score/scatter_cs_rna_protein_groups.png', width = 12, height = 8)
 
+
+# checking haploinsuffient genes 
+haploinsufficients = read.table('data/utilities/haploinsufficiency.bed', sep = '\t', header = F)
+haplo_genes = haploinsufficients %>% 
+  filter(V11 > .8) %>%   # dplyr::select(V4, V5, V10, V11) %>% 
+  pull(V4)
+
+haplo_cs = df_groups %>% 
+  filter(name %in% haplo_genes) 
+
+haplo_cs %>% 
+  ggplot(mapping = aes(x = RNA, y = protein, col = reg_group)) +
+  geom_point() +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  scale_color_manual(values = category_colors) +
+  theme_bw() +
+  labs(x = "RNA CS", y = "Protein CS") + 
+  facet_wrap(~karyotype) + 
+  guides(color = guide_legend(title = 'Regulatory group', 
+                              position = 'bottom', 
+                              nrow = 2))
+
+
+# checking CS and effects
+
+df_groups %>% 
+  mutate(karyotype = factor(karyotype)) %>% 
+  group_by(karyotype) %>% 
+  filter(reg_group != 'Intermediate/Other') %>% 
+  mutate(freq = row_number()/n()) %>% 
+  ggplot(
+    aes(x = karyotype, 
+        stratum = reg_group, 
+        alluvium = name,
+        y = freq,
+        fill = reg_group
+    ) 
+  ) +
+  geom_flow(alpha = .7) +
+  geom_stratum() +
+  theme_light() 
+  
+
+# identifying the weird genes - those that change the cs or reg class
+genes_groups_prop = df_groups %>% 
+  group_by(name, reg_group) %>% 
+  mutate(n_group = n()) %>%
+  group_by(name) %>% 
+  mutate(n_gene = n(), 
+         prop = n_group/n_gene) 
+  
+cna_sensitive_genes = genes_groups_prop %>% 
+  filter(prop == 1) %>% 
+  filter(reg_group == 'Intermediate/Other')
+  
+sens_genes = cna_sensitive_genes$name %>% unique
+df %>% 
+  filter(name %in% sens_genes) %>%
+  ggplot(aes(
+    lfc
+  )) + 
+  # geom_point() + 
+  geom_histogram() +
+  facet_wrap(~omic)
+
+sens_pathways = enrichGO(
+  gene = sens_genes,
+  OrgDb = org.Hs.eg.db,
+  keyType = 'SYMBOL', 
+  ont = 'ALL'
+)
+
+dotplot(sens_pathways, showCategory = 30)
+
+
+genes_groups_prop %>% 
+  filter(prop == 1) %>% 
+  dplyr::select(name, reg_group) %>% 
+  distinct() %>% 
+  group_by(reg_group) %>% 
+  dplyr::count()
+
+rna_prot_heavy_genes = genes_groups_prop %>% 
+  filter(prop == 1) %>% 
+  filter(reg_group == '(RNA-prot heavy)') %>% 
+  pull(name) %>% 
+  unique
+
+rna_prot_heavy_pathways = enrichGO(
+  gene = rna_prot_heavy_genes,
+  OrgDb = org.Hs.eg.db,
+  keyType = 'SYMBOL', 
+  ont = 'ALL'
+)
+
+rna_prot_heavy_pathways@result %>% view
+
+cls_v2 = enrichplot::pairwise_termsim(rna_prot_heavy_pathways)
+enrichplot::treeplot(cls_v2)
+
+# genes that act weird
+homozigous_compensating = genes_groups_prop %>% 
+  filter(prop < 1) %>% 
+  dplyr::select(karyotype, name, reg_group) %>% 
+  pivot_wider(names_from = karyotype, values_from = reg_group) %>% 
+  filter(`1:0` == '(RNA-Prot light)') %>% 
+  pull(name)
+
+homozigous_compensating_pathways = enrichGO(
+  gene = homozigous_compensating,
+  OrgDb = org.Hs.eg.db,
+  keyType = 'SYMBOL', 
+  ont = 'ALL'
+)
+dotplot(homozigous_compensating_pathways)
+
+  
+amp_compensating = genes_groups_prop %>% 
+  filter(prop < 1) %>% 
+  dplyr::select(karyotype, name, reg_group) %>% 
+  pivot_wider(names_from = karyotype, values_from = reg_group) %>% 
+  filter(`2:1` %in% c('(RNA-heavy)','(RNA-prot heavy)', '(Prot-heavy)') | `2:2` %in% c('(RNA-heavy)','(RNA-prot heavy)', '(Prot-heavy)')) %>% 
+  pull(name)
+
+
+amp_compensating_pathways = enrichGO(
+  gene = amp_compensating,
+  OrgDb = org.Hs.eg.db,
+  keyType = 'SYMBOL', 
+  ont = 'ALL'
+)
+dotplot(amp_compensating_pathways)
+
+# Run enrichment -----
+
+#  per groups - ORA ----
+# extract the genes per karyo-group
 genes_by_group = df_groups %>% 
   dplyr::select(karyotype, reg_group, name) %>% 
   split(interaction(.$karyotype, .$reg_group))
 
+
+# map gene symbols on entrez
 genes_by_group = lapply(genes_by_group, function(x) {
   
   gene_df <- bitr(
@@ -158,8 +258,44 @@ enrichment_groups = lapply(genes_by_group, function(s) {
 })
 # saveRDS(enrichment_groups, 'data/compensation/cs_groups_enrichment.rds')
 
+#  per karyotype - GSEA ----
+# extract the genes per karyo-group
+genes_by_group = df_groups %>% 
+  dplyr::select(karyotype, name, RNA, protein) %>% 
+  pivot_longer(cols = c(RNA, protein), names_to = 'omic', values_to = 'CS') %>% 
+  split(interaction(.$karyotype, .$omic))
+
+# map gene symbols on entrez and order by CS
+genes_by_group_ranked = lapply(genes_by_group, function(x) {
+  
+  gene_df <- bitr(
+    x$name %>% unique,
+    fromType = "SYMBOL",
+    toType   = "ENTREZID",
+    OrgDb    = org.Hs.eg.db
+  )
+  
+  dd = gene_df %>% 
+    full_join(., x, by = join_by('SYMBOL' == 'name')) %>% 
+    filter(!is.na(ENTREZID))
+  
+  setNames(nm = dd$ENTREZID, object = dd$CS) %>% 
+    sort(decreasing = T)
+  
+})
+
+# running enrichment on each gene group for karyotype
+enrichment_groups = lapply(genes_by_group_ranked, function(s) {
+  print('running')
+  run_gsea(s, org = 'human', p_th = .1)
+})
+saveRDS(enrichment_groups, 'data/compensation/cs_gsea.rds')
+
+# analyse the results ------
+
 enrichment_groups = readRDS('data/compensation/cs_groups_enrichment.rds') 
 
+## visualising results ---- ORA
 enrichment_groups_res = lapply(enrichment_groups, function(x) {
   lapply(names(x), function(s) {
     
@@ -184,7 +320,7 @@ enrichment_groups_res = lapply(enrichment_groups_res %>% names, function(g){
 enrichment_groups_res %>% 
   filter(p.adjust <= .05) %>% 
   group_by(karyotype, reg_group) %>% 
-  count() %>% 
+  dplyr::count() %>% 
   ggplot(aes(
     x = reg_group, 
     y = n, 
@@ -192,16 +328,23 @@ enrichment_groups_res %>%
   )) + 
   geom_bar(stat = 'identity', position = 'dodge') + 
   theme_bw() + 
-  scale_fill_brewer(palette = 'Pastel2')
+  scale_fill_brewer(palette = 'Pastel2') + 
+  labs(
+    x = 'Regulatory groups', 
+    y = 'Number of genes'
+  ) +
+  guides(fill = guide_legend(title = 'Karyotypes', position = 'bottom'))
+ggsave('res/compensation_score/annotations_by_group.png', width = 8, height = 6)
+ggsave('res/compensation_score/annotations_by_group.pdf', width = 8, height = 6)
 
 enrichment_groups_res %>% 
-  # filter(reg_group == "(RNA-Prot light)") %>% 
-  # filter(reg_group == '(RNA-Prot light)') %>% 
-  filter(reg_group == '(RNA-heavy)') %>% 
-  filter(source %in% c('GO', 'REAC')) %>% 
-  # filter(source == 'GO') %>% 
-  # filter(source == 'REAC') %>%
-  # filter(source != 'REAC') %>%
+  group_by(karyotype, source, reg_group) %>% 
+  dplyr::count() %>% 
+  view
+
+enrichment_groups_res %>% 
+  filter(reg_group == '(RNA-prot heavy)') %>%
+  filter(source == 'KEGG') %>%
   filter(p.adjust <= .05) %>% 
   mutate(Gene_Ratio = str_split(GeneRatio, "/") %>%
            map_dbl(~ as.numeric(.x[1]) / as.numeric(.x[2]))) %>% 
@@ -218,10 +361,11 @@ enrichment_groups_res %>%
   scale_color_viridis_c() + 
   facet_wrap(~source, scales = 'free') + 
   theme_bw() 
+
 ggsave('res/annotation/rna_prot_light_go_ann.png', width = 22, height = 10)
   
 # mapping the CS on the pathway
-enrichment_groups_res %>% 
+enrichment_cs = enrichment_groups_res %>% 
   separate_rows(geneID, sep = '/') %>% 
   full_join(., df_groups, by = join_by(
     'geneID' == 'name', 
@@ -231,181 +375,356 @@ enrichment_groups_res %>%
   group_by(Description, karyotype, reg_group) %>% 
   mutate(mean_RNA = mean(RNA, na.rm = T), 
          mean_protein = mean(protein, na.rm = T)) %>% 
-  filter(reg_group == '(RNA-prot heavy)') %>% 
-  filter(source == 'KEGG') %>% 
+  relocate(mean_RNA, .after = Description) %>% 
+  relocate(mean_protein, .after = Description) %>% 
+  relocate(reg_group, .after = Description) %>% 
+  filter(!is.na(Description)) %>% 
+  mutate(genes = paste(geneID, collapse = '/')) %>% 
+  dplyr::select(-c(geneID, RNA, protein, DNA_lfc)) %>% 
+  distinct()
+
+write.csv(enrichment_cs, 'res/compensation_score/enrichment_cs.csv', sep = ',', col.names = T, quote = F, row.names = F)
+  
+
+view(enrichment_cs)
+
+enrichment_cs %>% 
+  dplyr::select(Description, karyotype, reg_group, starts_with('mean')) %>% 
+  distinct() %>% 
+  pivot_longer(cols = c(mean_RNA, mean_protein), 
+               names_to = 'omic', 
+               values_to = 'mean_CS') %>% 
+  filter(reg_group == "(RNA-Prot light)") %>% 
+  group_by(omic) %>%
+  slice_min(mean_CS, n = 10) %>% 
   ggplot(aes(
     y = Description, 
-    x = karyotype, 
-    color = mean_RNA
+    x = omic, 
+    color = mean_CS
   )) + 
   geom_point() + 
   scale_color_viridis_c() +
-  theme_bw()
-  
+  theme_bw() #+ 
+  # facet_wrap(~karyotype, scales = 'free_y')
 
+df_wide = df %>% 
+  dplyr::select(-CS) %>% 
+  pivot_wider(names_from = omic, values_from = lfc)
 
+enrichment_fc = enrichment_groups_res %>% 
+  separate_rows(geneID, sep = '/') %>% 
+  full_join(., df_wide, by = join_by(
+    'geneID' == 'name', 
+    # 'reg_group' == 'reg_group', 
+    'karyotype' == 'karyotype'
+  )) %>% 
+  group_by(Description, karyotype, reg_group) %>% 
+  mutate(mean_RNA_FC = mean(RNA, na.rm = T), 
+         mean_protein_FC = mean(protein, na.rm = T)) %>% 
+  relocate(mean_RNA_FC, .after = Description) %>% 
+  relocate(mean_protein_FC, .after = mean_RNA_FC) %>% 
+  relocate(reg_group, .after = Description) %>% 
+  filter(!is.na(Description)) %>% 
+  mutate(genes = paste(geneID, collapse = '/')) %>% 
+  dplyr::select(-c(geneID, RNA, protein, DNA_lfc)) %>% 
+  distinct()
 
+view(enrichment_fc)
+write.csv(enrichment_fc, 'res/compensation_score/enrichment_fc.csv', sep = ',', col.names = T, quote = F, row.names = F)
 
-# trying a different method to distinguish the groups -- t-test
+# compare clusters -----
+prot_heavy = genes_by_group[grep('(Prot-heavy)', names(genes_by_group), value = T)] 
+prot_heavy = lapply(prot_heavy, function(x) {x$SYMBOL %>% unique})
 
-df = df %>% 
-  select(-n) 
-
-df_test = df %>% 
-  group_by(name) %>%
-  mutate(D_z = (CS - mean(CS)) / sd(CS),
-         close_to_zero = abs(D_z) < 1) 
-
-# test = df %>% 
-#   split(interaction(.$omic, .$karyotype)) %>% 
-#   lapply(., function(d) {
-#     
-#     t.test(d$CS, mu = 0)    
-#     
-#   })
-#   
-# test$`RNA.1:0`
-
-
-# old way
-
-
-category_colors <- c(
-  "(RNA-prot heavy)" = "#AD002AB2",
-  "(Prot-heavy)" = "#E18727B2",
-  "(RNA-heavy)" = "#20854Eb2",
-  "(RNA-Prot light)" = "#00468BB2",
-  "Intermediate/Other" = "gainsboro"
-)
-
-reg_groups_plot = df_groups %>% 
-  ggplot(mapping = aes(x = RNA, y = protein, col = reg_group)) +
-  geom_point() +
-  geom_vline(xintercept = 0, linetype = "dashed") +
-  geom_hline(yintercept = 0, linetype = "dashed") +
-  scale_color_manual(values = category_colors) +
-  theme_bw() +
-  labs(x = "RNA CS", y = "Protein CS")
-
-# groups = setdiff(unique(df_groups$reg_group), "Intermediate/Other")
-groups = unique(df_groups$reg_group)
-genes_by_cluster = lapply(groups, function(g) {
-  df_groups %>% dplyr::filter(reg_group == g) %>% dplyr::pull(name)
-})
-names(genes_by_cluster) <- groups
-
-
-formula_res <- compareCluster(genes_by_cluster, 
+prot_heavy_clusters <- compareCluster(prot_heavy, 
                               fun = "enrichGO", 
                               OrgDb = org.Hs.eg.db, 
-                              keyType = "SYMBOL",
+                              keyType = 'SYMBOL',
                               ont = "ALL")
+dotplot(prot_heavy_clusters, showCategory = 20)
+# sim_prot_heavy = enrichplot::pairwise_termsim(prot_heavy_clusters)
 
-# dir.create("results/enrichment", recursive = T)
-# saveRDS(formula_res, "results/enrichment/cluster_comparison.rds")
-formula_res@compareClusterResult %>% view()
-# sheet_write(ss = sheet_url, sheet = "Cluster Enrichment")
-dotplot(formula_res, showCategory = 20)
+rna_heavy = genes_by_group[grep('(RNA-heavy)', names(genes_by_group), value = T)] 
+rna_heavy = lapply(rna_heavy, function(x) {x$SYMBOL %>% unique})
 
-formula_res@compareClusterResult %>% 
-  dplyr::group_by(Cluster,ONTOLOGY) %>% 
-  filter(p.adjust <= 0.05) %>% 
-  count()
+rna_heavy_clusters <- compareCluster(rna_heavy, 
+                                      fun = "enrichGO", 
+                                      OrgDb = org.Hs.eg.db, 
+                                      keyType = 'SYMBOL',
+                                      ont = "ALL")
+dotplot(rna_heavy_clusters, showCategory = 5)
 
-library(GOSemSim)
-library(igraph)
 
-TOP_K = 20
+homozigous_genes = genes_by_group[grep('1:0', names(genes_by_group), value = T)] 
+homozigous_genes = lapply(homozigous_genes, function(x) {x$SYMBOL %>% unique})
 
-go_df <- formula_res@compareClusterResult %>% 
-  dplyr::group_by(Cluster) %>% 
-  dplyr::arrange(p.adjust) %>% 
-  filter(ONTOLOGY == 'BP') %>% 
-  dplyr::slice_head(n = TOP_K)
+homozigous_genes_clusters <- compareCluster(homozigous_genes, 
+                                     fun = "enrichGO", 
+                                     OrgDb = org.Hs.eg.db, 
+                                     keyType = 'SYMBOL',
+                                     ont = "ALL")
+dotplot(homozigous_genes_clusters, showCategory = 5)
 
-# ---- semantic similarity matrix (Wang)
-hsGO <- godata(annoDb = "org.Hs.eg.db", ont = "BP")
-go_ids <- unique(go_df$ID)
 
-S <- mgoSim(go_ids, go_ids, semData = hsGO, measure = "Wang", combine = NULL)
-S[is.na(S)] <- 0
-D <- as.dist(1 - S)
+# comparing all clusters 
 
-# ---- 2D embedding (MDS)
-xy <- cmdscale(D, k = 2) %>% as.data.frame()
-colnames(xy) <- c("dim1", "dim2")
-xy$ID <- go_ids
+ggenes = lapply(genes_by_group[1:16], function(x) {x$SYMBOL %>% unique})
+names(ggenes)
+reg_groups_comparison <- compareCluster(ggenes, 
+                                        fun = "enrichGO", 
+                                        OrgDb = org.Hs.eg.db, 
+                                        keyType = 'SYMBOL',
+                                        ont = "ALL")
 
-plot_df <- go_df %>%
-  left_join(xy, by = "ID") %>%
-  mutate(size = -log10(p.adjust))
+dotplot(reg_groups_comparison, showCategory = 10) + 
+  facet_wrap(~Cluster, scales = 'free')
 
-make_mst_edges <- function(df) {
-  n <- nrow(df)
-  if (n < 3) return(tibble(x=double(), y=double(), xend=double(), yend=double()))
+# cs_cluster_sim = enrichplot::pairwise_termsim(cs_cluster_enrichment)
+# enrichplot::treeplot(cs_cluster_sim)
+
+top_10_terms_by_group = reg_groups_comparison@compareClusterResult %>% 
+  # filter(p.adjust <= .05) %>% 
+  tidyr::separate(Cluster, into = c('karyotype', 'reg_group'), sep = '\\.') %>% 
+  group_by(karyotype) %>% 
+  slice_min(p.adjust, n = 10) %>% 
+  dplyr::select(karyotype, reg_group, Description, p.adjust) %>% 
+  split(interaction(.$karyotype, .$reg_group))
+
+test = lapply(top_10_terms_by_group, function(x) {
+  tterms = x$Description %>% unique
   
-  coords <- as.matrix(df[, c("dim1","dim2")])
-  distmat <- as.matrix(dist(coords))
+  reg_groups_comparison@compareClusterResult %>% 
+    # filter(p.adjust <= .05) %>% 
+    tidyr::separate(Cluster, into = c('karyotype', 'reg_group'), sep = '\\.') %>% 
+    filter(Description %in% tterms)
+})
+
+test$`1:0.(RNA-heavy)` %>% 
+  filter(reg_group == '(RNA-heavy)') %>% 
+  ggplot(aes(
+    x = karyotype, 
+    y = Description, 
+    color = p.adjust
+  )) + 
+  geom_point() + 
+  theme_bw()
+
+## similarity ----
+
+treeplots_enrichment = lapply(enrichment_groups[1:16], function(x) {
   
-  g <- graph_from_adjacency_matrix(distmat, mode = "undirected",
-                                   weighted = TRUE, diag = FALSE)
-  mst_g <- mst(g, weights = E(g)$weight)
-  el <- as.data.frame(as_edgelist(mst_g))
-  colnames(el) <- c("i","j")
-  el$i <- as.integer(el$i); el$j <- as.integer(el$j)
+  lapply(x, function(s) {
+    # s = x$GO
+    
+    tryCatch({
+      df = enrichplot::pairwise_termsim(s, method = 'Jiang')
+      enrichplot::treeplot(df, group_color = rcartocolor::carto_pal(n = 5, name = 'Prism')) 
+    }, 
+    error = function(e) {
+      NULL
+    })
+  })
   
-  tibble(
-    x    = df$dim1[el$i],
-    y    = df$dim2[el$i],
-    xend = df$dim1[el$j],
-    yend = df$dim2[el$j]
-  )
-}
+})
 
-edges_df <- plot_df %>%
-  group_by(Cluster) %>%
-  group_modify(~ make_mst_edges(.x)) %>%
-  ungroup()
+pdf('res/compensation_score/annotations_by_group_Jiang_dist.pdf', width = 20, height = 14)
+lapply(names(treeplots_enrichment), function(x) {
+  print(x)
+  print(assebly_plots(enrich = treeplots_enrichment[[x]], cls = x))
+})
+dev.off()
 
-# ---- Base semantic plot (overlay by condition)
-semantic_plot_base <- ggplot(plot_df, aes(dim1, dim2)) +
-  geom_segment(
-    data = edges_df,
-    aes(x=x, y=y, xend=xend, yend=yend, color=Cluster),
-    alpha = 0.25, linewidth = 0.6
-  ) +
-  geom_point(aes(color = Cluster, size = size), alpha = 0.75) +
-  #facet_grid(~Cluster) +
-  #facet_wrap(~condition, ncol = 1) +
-  theme_bw() +
-  scale_color_manual(values = category_colors) +
-  scale_size_continuous(range = c(2, 7)) +
-  labs(
-    x = "GO semantic dimension 1",
-    y = "GO semantic dimension 2",
-    color = "Cluster",
-    size  = expression(-log[10](adjP))
-  )
+pdf('res/compensation_score/annotations_by_group_GO_Jiang_dist.pdf', width = 16, height = 8)
+lapply(names(treeplots_enrichment), function(x) {
+  
+  treeplots_enrichment[[x]]$GO + 
+    ggtitle(gsub('\\.', ' ', x))
+  
+  # print(x)
+  # print(assebly_plots(enrich = treeplots_enrichment[[x]], cls = x))
+})
+dev.off()
 
-n_terms_to_plot = TOP_K
-label_df = plot_df %>% 
-  dplyr::slice_sample(n = n_terms_to_plot)
+# x = "2:0.(RNA-Prot light)"
 
-# ---------------------------
-# 4) Two final semantic plots
-# ---------------------------
+# visualising results - GSEA ----
 
-# A) Overlay (labels once per condition, across methods) — uses distinct labels w/out method
-semantic_plot_overlay <- semantic_plot_base +
-  ggrepel::geom_text_repel(
-    data = label_df %>% dplyr::select(Description, Cluster, dim1, dim2) %>% dplyr::distinct(),
-    aes(label = Description),
-    size = 3,
-    max.overlaps = Inf,
-    box.padding = 0.4,
-    point.padding = 0.25,
-    min.segment.length = 0
-  )
+gsea_res = readRDS('data/compensation/cs_gsea.rds')
 
-ggsave("img/semantic_enrichment.pdf", plot = semantic_plot_overlay, width = 10, height = 8, units = "in")
-ggsave("img/semantic_enrichment.png", plot = semantic_plot_overlay, width = 10, height = 8, units = "in", dpi = 450)
+go_gsea_RNA = extract_res(gsea_res, db = 'GO', omic = 'RNA')
+
+sapply(go_gsea_RNA, function(x) {
+  x %>% 
+    # filter(p.adjust <= .05) %>% 
+    dim
+})
+
+go_gsea_RNA = lapply(go_gsea_RNA %>% names, function(x) {
+  go_gsea_RNA[[x]]@result %>% 
+    mutate(group = x) %>% 
+    tidyr::separate(group, into = c('karyotype', 'omic'), sep = '\\.')
+}) %>% 
+  bind_rows()
+
+go_gsea_RNA %>%
+  filter(p.adjust <= .05) %>% 
+  ggplot(aes(
+    y = Description, 
+    x = NES, 
+    fill = p.adjust
+  )) + 
+  geom_bar(stat = 'identity') + 
+  theme_bw() + 
+  ggsci::scale_fill_gsea() + 
+  facet_wrap(~karyotype, scales = 'free')
+
+
+go_gsea_prot = extract_res(gsea_res, db = 'GO', omic = 'protein')
+
+sapply(go_gsea_prot, function(x) {
+  x %>% 
+    # filter(p.adjust <= .05) %>% 
+    dim
+})
+
+go_gsea_prot = lapply(go_gsea_prot %>% names, function(x) {
+  go_gsea_prot[[x]]@result %>% 
+    mutate(group = x) %>% 
+    tidyr::separate(group, into = c('karyotype', 'omic'), sep = '\\.')
+}) %>% 
+  bind_rows()
+
+go_gsea_prot %>%
+  filter(p.adjust <= .05, karyotype == '2:2') %>% 
+  ggplot(aes(
+    y = Description, 
+    x = NES, 
+    fill = p.adjust
+  )) + 
+  geom_bar(stat = 'identity') + 
+  theme_bw() + 
+  ggsci::scale_fill_gsea() + 
+  facet_wrap(~karyotype, scales = 'free')
+
+
+reac_gsea_prot = extract_res(gsea_res, db = 'REAC', omic = 'protein')
+reac_gsea_prot = lapply(reac_gsea_prot %>% names, function(x) {
+  reac_gsea_prot[[x]]@result %>% 
+    mutate(group = x) %>% 
+    tidyr::separate(group, into = c('karyotype', 'omic'), sep = '\\.')
+}) %>% 
+  bind_rows()
+
+go_gsea_prot %>%
+  filter(p.adjust <= .05) %>% 
+  ggplot(aes(
+    y = Description, 
+    x = NES, 
+    fill = p.adjust
+  )) + 
+  geom_bar(stat = 'identity') + 
+  theme_bw() + 
+  ggsci::scale_fill_gsea() + 
+  facet_wrap(~karyotype, scales = 'free')
+
+kegg_gsea_prot = extract_res(gsea_res, db = 'KEGG', omic = 'protein')
+kegg_gsea_prot = lapply(kegg_gsea_prot %>% names, function(x) {
+  kegg_gsea_prot[[x]]@result %>% 
+    mutate(group = x) %>% 
+    tidyr::separate(group, into = c('karyotype', 'omic'), sep = '\\.')
+}) %>% 
+  bind_rows()
+
+kegg_gsea_prot %>%
+  filter(p.adjust <= .05) %>% 
+  ggplot(aes(
+    y = Description, 
+    x = NES, 
+    fill = p.adjust
+  )) + 
+  geom_bar(stat = 'identity') + 
+  theme_bw() + 
+  ggsci::scale_fill_gsea() + 
+  facet_wrap(~karyotype, scales = 'free')
+
+# testing on a msidb -- ribosomes/translation ------
+
+cp_gmt = clusterProfiler::read.gmt('data/utilities/c2.cp.v2026.1.Hs.symbols.gmt')
+
+ribo_genes = cp_gmt %>% 
+  filter(term %in% c('KEGG_RIBOSOME', 'WP_CYTOPLASMIC_RIBOSOMAL_PROTEINS')) %>% 
+  mutate(term = as.character(term)) %>% 
+  split(.$term)
+  
+rr_expr_groups = lapply(ribo_genes, function(x) {
+  gg = x$gene
+  
+  df_groups %>% 
+    filter(name %in% gg) %>% 
+    mutate(term = unique(x$term))
+  
+}) %>% 
+  bind_rows()
+  
+rr_expr_groups %>% 
+  group_by(term, karyotype, reg_group) %>% 
+  dplyr::count() %>% 
+  ggplot(aes(
+    y = n, 
+    x = reg_group, 
+    fill  =karyotype
+  )) + 
+  geom_bar(stat = 'identity', position = 'dodge') + 
+  scale_fill_brewer(palette = 'Pastel2') + 
+  theme_bw() + 
+  facet_wrap(~term)
+
+
+
+# do not look ###############################################################
+# # trying a different method to distinguish the groups -- t-test
+# 
+# df = df %>% 
+#   select(-n) 
+# 
+# df_test = df %>% 
+#   group_by(name) %>%
+#   mutate(D_z = (CS - mean(CS)) / sd(CS),
+#          close_to_zero = abs(D_z) < 1) 
+# 
+# # test = df %>% 
+# #   split(interaction(.$omic, .$karyotype)) %>% 
+# #   lapply(., function(d) {
+# #     
+# #     t.test(d$CS, mu = 0)    
+# #     
+# #   })
+# #   
+# # test$`RNA.1:0`
+# 
+# 
+# # groups = setdiff(unique(df_groups$reg_group), "Intermediate/Other")
+# groups = unique(df_groups$reg_group)
+# genes_by_cluster = lapply(groups, function(g) {
+#   df_groups %>% dplyr::filter(reg_group == g) %>% dplyr::pull(name)
+# })
+# names(genes_by_cluster) <- groups
+# 
+# 
+# formula_res <- compareCluster(genes_by_cluster, 
+#                               fun = "enrichGO", 
+#                               OrgDb = org.Hs.eg.db, 
+#                               keyType = "SYMBOL",
+#                               ont = "ALL")
+# 
+# # dir.create("results/enrichment", recursive = T)
+# # saveRDS(formula_res, "results/enrichment/cluster_comparison.rds")
+# formula_res@compareClusterResult %>% view()
+# # sheet_write(ss = sheet_url, sheet = "Cluster Enrichment")
+# dotplot(formula_res, showCategory = 20)
+# 
+# formula_res@compareClusterResult %>% 
+#   dplyr::group_by(Cluster,ONTOLOGY) %>% 
+#   filter(p.adjust <= 0.05) %>% 
+#   count()
+
