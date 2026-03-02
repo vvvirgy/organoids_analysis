@@ -31,6 +31,8 @@ sc_samples = grep('Sample_PDO11_filtered',
                   value =T, 
                   invert = T)
 
+sc_samples = c('data/scRNA/I10_1_013_4164_1046BL_S13_filtered.rds', 'data/scRNA/Sample_PDO63_filtered.rds')
+
 data = lapply(sc_samples, function(p) {
   
   x = readRDS(p)
