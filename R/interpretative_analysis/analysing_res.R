@@ -1,13 +1,14 @@
 rm(list=ls())
 .libPaths()
 library(tidyverse)
-library(gprofiler2)
+# library(gprofiler2)
 library(UpSetR)
 library(grid)
 library(patchwork)
 library(ggalluvial)
 library(ComplexHeatmap)
 library(rcartocolor)
+library(clusterProfiler)
 setwd("/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj")
 
 source('organoids_analysis/R/plot_utils/dge_utils_and_plots.R')
@@ -17,7 +18,81 @@ source('organoids_analysis/R/plot_utils/dge_utils_and_plots.R')
 
 # loading and preprocessing data -------
 
-multi_omics = readRDS('data/de_res/lfc_prot_and_rna_bind.rds') %>% na.omit()
+# multi_omics = readRDS('data/de_res/lfc_prot_and_rna_bind.rds') %>% na.omit()
+
+args = NULL
+
+# Default values if not provided
+sf_method  <- ifelse(length(args) >= 1, args[1], "psinorm")
+use_stable <- ifelse(length(args) >= 2, as.logical(args[2]), FALSE)
+
+cat(paste0("Running with sf_method: ", sf_method, " | use_stable: ", use_stable, "\n"))
+
+rm(list = setdiff(ls(), c("sf_method", "use_stable")))
+
+basepath = '/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj/data'
+SCE_PATH = "/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj/data/scexp_karyo_all_organoids_filt.rds"
+META_PATH = "/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj/data/karyotypes_genes_filtered_scrna.rds"
+
+IMG_PATH = paste0("img/sf_", sf_method, "_stable_", use_stable)
+RES_PATH = paste0("data/compensation_score/sf_", sf_method, "_stable_", use_stable)
+RNA_PATH = paste0("data/results/RNA/lfc_res_",sf_method,"_stable_",use_stable,".rds")
+# gs4_auth(email = "santacatterinagiovanni@gmail.com")
+# ss = gs4_create(paste0("organoids_", sf_method, "_", use_stable))
+
+dir.create(IMG_PATH, recursive = T)
+dir.create(RES_PATH, recursive = T)
+
+# Parameters
+#sheet_url <- "https://docs.google.com/spreadsheets/d/1uoiYWQg9EemHiriYU9EzFPBf1fF2KNQYsiWfurJnID0/"
+alpha = .05
+MIN_SAMPLES = 1
+
+# Get gene/karyotypes with at least two samples
+karyotypes_df_all = readRDS(META_PATH)
+karyotypes_df_good = karyotypes_df_all %>% 
+  dplyr::group_by(hgnc_symbol, karyotype) %>% 
+  dplyr::distinct() %>% 
+  dplyr::summarise(n = n()) %>% 
+  dplyr::filter(n >= MIN_SAMPLES) %>% 
+  dplyr::rename(name = hgnc_symbol)
+
+res_rna = readRDS(RNA_PATH) %>% dplyr::mutate(omic = "RNA") %>% 
+  dplyr::mutate(lfc = ifelse(abs(lfc) > 10, sign(lfc) * 10, lfc))
+
+res_prot = readRDS("/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj/data/fc_tb_clean_v2.rds") %>% 
+  dplyr::rename(coef = condition, name = PG.Genes, lfc = diff, pval = p.val, adj_pval = p.adj) %>% 
+  dplyr::mutate(omic = "protein") %>% 
+  tidyr::separate(coef, sep = "X", into = c(".", "karyotype")) %>% 
+  dplyr::select(lfc, name, karyotype, omic) %>% 
+  mutate(karyotype = str_replace(karyotype, "\\.", ":")) %>% 
+  dplyr::group_by(karyotype)
+
+df_dna = readRDS("data/results/DNA_lfc.rds") %>% dplyr::rename(DNA_lfc = lfc)
+
+df = dplyr::bind_rows(res_rna, res_prot) %>% na.omit()
+df$omic = factor(df$omic, levels = c("RNA", "protein"))
+
+df %>% saveRDS(file.path(RES_PATH, "lfc_prot_and_rna_bind.rds"))
+
+df = readRDS(file.path(RES_PATH, "lfc_prot_and_rna_bind.rds"))
+
+# testing haploinsufficient genes
+haploinsufficients = read.table('data/utilities/haploinsufficiency.bed', sep = '\t', header = F)
+haplo_genes = haploinsufficients %>% 
+  filter(V11 > .8) %>%   # dplyr::select(V4, V5, V10, V11) %>% 
+  pull(V4)
+
+haplo_fc = df %>% 
+  filter(name %in% haplo_genes) 
+
+haplo_fc %>% 
+  filter(karyotype == '1:0') %>% 
+  ggplot(aes(lfc)) + 
+  geom_histogram(binwidth = .01) + 
+  facet_wrap(~omic, scales = 'free')
+
+
 multi_omics$adj_pval = p.adjust(multi_omics$pval, method = "BH")
 multi_omics = multi_omics %>% 
   dplyr::group_by(name, karyotype) %>% 
