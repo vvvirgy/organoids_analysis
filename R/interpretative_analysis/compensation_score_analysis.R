@@ -6,7 +6,6 @@ library(boot)
 library(clusterProfiler)
 library(ReactomePA)
 library(org.Hs.eg.db)
-library(googlesheets4)
 source('/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj/organoids_analysis/R/plot_utils/dge_utils_and_plots.R')
 
 
@@ -253,10 +252,13 @@ genes_by_group = lapply(genes_by_group, function(x) {
 })
 
 # running enrichment on each gene group for karyotype
-enrichment_groups = lapply(genes_by_group, function(s) {
-  run_ORA(unique(s$ENTREZID), org = 'human', p_th = .1)
+enrichment_groups = lapply(genes_by_group[1:16], function(s) {
+  run_ORA(unique(s$ENTREZID), org = 'human', p_th = .1, databases = 'GO')
 })
-# saveRDS(enrichment_groups, 'data/compensation/cs_groups_enrichment.rds')
+saveRDS(enrichment_groups, 'data/compensation/cs_groups_enrichment_GO.rds')
+
+
+
 
 #  per karyotype - GSEA ----
 # extract the genes per karyo-group
@@ -293,7 +295,7 @@ saveRDS(enrichment_groups, 'data/compensation/cs_gsea.rds')
 
 # analyse the results ------
 
-enrichment_groups = readRDS('data/compensation/cs_groups_enrichment.rds') 
+# enrichment_groups = readRDS('data/compensation/cs_groups_enrichment.rds') 
 
 ## visualising results ---- ORA
 enrichment_groups_res = lapply(enrichment_groups, function(x) {
