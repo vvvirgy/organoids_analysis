@@ -1087,12 +1087,12 @@ define_th = function(df,
     pivot_wider(names_from = omic, values_from = CS) %>% 
     mutate(reg_group = case_when(
       # Group 1: High RNA CS (>65th) and Low Protein CS (<35th)
-      RNA > quant$RNA[2] & protein < quant$protein[1] ~ "(RNA-heavy)",
-      RNA > quant$RNA[2] & protein > quant$protein[2] ~ "(RNA-prot heavy)",
+      RNA > quant$RNA[2] & Protein < quant$Protein[1] ~ "(RNA-heavy)",
+      RNA > quant$RNA[2] & Protein > quant$Protein[2] ~ "(RNA-prot heavy)",
       
       # Group 2: Low RNA CS (<35th) and High Protein CS (>65th)
-      RNA < quant$RNA[1] & protein > quant$protein[2] ~ "(Prot-heavy)",
-      RNA < quant$RNA[1] & protein < quant$protein[1] ~ "(RNA-Prot light)",
+      RNA < quant$RNA[1] & Protein > quant$Protein[2] ~ "(Prot-heavy)",
+      RNA < quant$RNA[1] & Protein < quant$Protein[1] ~ "(RNA-Prot light)",
       
       TRUE ~ "Intermediate/Other"
     ))
@@ -1101,14 +1101,6 @@ define_th = function(df,
   
 }
 
-# colors for plots
-category_colors <- c(
-  "(RNA-prot heavy)" = "#AD002AB2",
-  "(Prot-heavy)" = "#E18727B2",
-  "(RNA-heavy)" = "#20854Eb2",
-  "(RNA-Prot light)" = "#00468BB2",
-  "Intermediate/Other" = "gainsboro"
-)
 
 # from enrichment compute the CS for each found pathway
 

@@ -2,7 +2,7 @@ library(clusterProfiler)
 library(tidyverse)
 library(org.Hs.eg.db)
 library(msigdbr)
-META_PATH = "/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj/data/karyotypes_genes_filtered_scrna.rds"
+META_PATH = "data/karyotypes_genes_filtered_scrna.rds"
 
 MIN_SAMPLES = 1
 
@@ -61,7 +61,7 @@ formula_res <- compareCluster(ggenes,
                               fun = "enrichGO", 
                               OrgDb = org.Hs.eg.db, 
                               keyType = "ENTREZID",
-                              ont = "BP") %>% 
+                              ont = "ALL") %>% 
   setReadable(., OrgDb = org.Hs.eg.db, keyType="ENTREZID")
   
 # dotplot(formula_res, showCategory = 15)
@@ -121,6 +121,9 @@ plot_res = function(res,
     theme(axis.text.y = element_text(size = 10))
 
 }
+
+plot_res(res = res_clustering, cluster = '(RNA-Prot light)', variable = 'p.adjust', n_terms = 30) + 
+  ggtitle('RNA-prot heavy associated terms, ranked by p-adjust')
 
 # pdf('res/compensation_score/annotations_rna_prot_heavy.pdf', width = 9, height = 10)
 # plot_res(res_clustering, cluster = '(RNA-prot heavy)', variable = 'RNA_cs', n_terms = 30) + 
