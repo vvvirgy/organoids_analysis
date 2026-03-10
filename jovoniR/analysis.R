@@ -273,8 +273,8 @@ p_compensated_genes_fraction = ggplot(plot_data, aes(x = karyotype, y = f_mean, 
   labs(y = "Fraction of compensated genes", fill = "", x = "Karyotype")
 p_compensated_genes_fraction
 
-ggsave(file.path(IMG_PATH, "compensated_frac.pdf"), width = 5, height = 3.5, units = "in", plot = p_compensated_genes_fraction)
-ggsave(file.path(IMG_PATH, "compensated_frac.png"), width = 5, height = 3.5, units = "in", dpi = 450, plot = p_compensated_genes_fraction)
+ggsave(file.path(IMG_PATH, "compensated_frac.pdf"), width = 5, height = 4, units = "in", plot = p_compensated_genes_fraction)
+ggsave(file.path(IMG_PATH, "compensated_frac.png"), width = 5, height = 4, units = "in", dpi = 450, plot = p_compensated_genes_fraction)
 saveRDS(p_compensated_genes_fraction, file.path(IMG_PATH, "compensated_frac.rds"))
 
 # # 1. The Main Boxplot
@@ -557,6 +557,99 @@ ggsave(plot = reg_groups_plot_w_annotation, filename = file.path(IMG_PATH, "reg_
 ggsave(plot = reg_groups_plot_w_annotation, filename = file.path(IMG_PATH, "reg_groups_plot_annotated.png"), width = 5, height = 3.5, dpi = 450, units = "in")
 saveRDS(reg_groups_plot_w_annotation, file.path(IMG_PATH, "reg_groups_plot_annotated.rds"))
 
+# og and tsg by reg groups (excluding intermediate)
+
+cols = c('Hugo_Symbol', 	
+         'Entrez_Gene_ID', 
+         'GRCh37_Isoform', 	
+         'GRCh37_RefSeq',	
+         'GRCh38_Isoform', 	
+         'GRCh38_RefSeq', 	
+         'Gene_Type', 
+         'number_occurrences', 
+         'OncoKB_Annotated',
+         'MSK_IMPACT', 
+         'MSK_HEME',
+         'FOUNDATION_ONE',
+         'FOUNDATION_ONE_HEME',
+         'Vogelstein',
+         'COSMIC_CGC',
+         'Gene_Aliases')
+
+cancer_genes = read.table('/orfeo/scratch/cdslab/vgazziero/organoids_prj/data/utilities/cancerGeneList.tsv', sep = "\t", header = F, skip = 1, col.names = cols) %>%
+  dplyr::as_tibble() %>% 
+  filter(Gene_Type %in% c('ONCOGENE', 'TSG', 'ONCOGENE_AND_TSG')) %>% 
+  dplyr::select(Hugo_Symbol, Gene_Type) %>% 
+  distinct() %>% 
+  mutate(Gene_Type = case_when(
+    Gene_Type == 'ONCOGENE' ~ 'Oncogene', 
+    Gene_Type == 'ONCOGENE_AND_TSG' ~ 'Oncogene/TSG', 
+    .default = Gene_Type
+  )) %>% 
+  mutate(Gene_Type = factor(Gene_Type, levels = c('TSG', 'Oncogene', 'Oncogene/TSG')))
+
+gene_roles_groups = df_groups %>% 
+  dplyr::right_join(., cancer_genes, by = join_by('name' == 'Hugo_Symbol')) %>% 
+  dplyr::rename(role = 'Gene_Type') %>% 
+  filter(!is.na(reg_group)) 
+
+tsg_og_reg_group_dist = gene_roles_groups %>% 
+  group_by(role,reg_group) %>% 
+  summarise(n_genes = n()) %>% 
+  group_by(role) %>% 
+  mutate(tot = sum(n_genes), 
+         frac = n_genes/tot) %>% 
+  filter(reg_group != 'Intermediate/Other') %>% 
+  ggplot(aes(
+    y = role, 
+    x = frac,
+    fill = reg_group
+  )) + 
+  geom_bar(stat = 'identity', 
+           # position = 'dodge',
+           position = position_dodge2(preserve = "single", width = 1),
+           alpha = 1, 
+           # width = 
+  ) + 
+  theme_bw()  +
+  scale_fill_manual(values = category_colors) + 
+  coord_flip() +
+  labs(
+    y = 'Gene role', 
+    x = '% genes'
+  ) + 
+  guides(fill = guide_legend(title = '')) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1), 
+        # legend.position = 'bottom',
+        # legend.key.size = unit(.2, 'cm'), 
+        legend.key.height = unit(.2, 'cm'),
+        legend.key.width = unit(.2, 'cm'),
+        legend.text = element_text(size=8)) + 
+  scale_x_continuous(labels = scales::percent) 
+
+tsg_og_reg_group_dist
+
+ggsave(plot = tsg_og_reg_group_dist, filename = file.path(IMG_PATH, "tsg_og_reg_group_dist.png"), height = 5, width = 4, dpi = 450, units = "in")
+ggsave(plot = tsg_og_reg_group_dist, filename = file.path(IMG_PATH, "tsg_og_reg_group_dist.pdf"), height = 5, width = 4)
+saveRDS(tsg_og_reg_group_dist, file.path(IMG_PATH, "tsg_og_reg_group_dist.rds"))
+
+
+# wrap everything 
+
+pt_l = '
+AAAA
+BBCC
+'
+
+p_omics_trend_by_reg_groups = readRDS(file.path(IMG_PATH, "omics_trends.rds"))
+
+wrap_plots(list(
+  p_omics_trend_by_reg_groups
+))
+
+
+
+# annotation
 groups = setdiff(unique(df_groups$reg_group), "Intermediate/Other")
 genes_by_cluster = lapply(groups, function(g) {
   df_groups %>% dplyr::filter(reg_group == g) %>% dplyr::pull(name)
