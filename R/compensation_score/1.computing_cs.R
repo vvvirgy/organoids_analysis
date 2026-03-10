@@ -2,19 +2,19 @@ rm(list = ls())
 .libPaths()
 library(tidyverse)
 library(dplyr)
-library(boot)
-library(clusterProfiler)
-library(ReactomePA)
-library(org.Hs.eg.db)
-library(googlesheets4)
+# library(boot)
+# library(clusterProfiler)
+# library(ReactomePA)
+# library(org.Hs.eg.db)
+# library(googlesheets4)
 source('/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj/organoids_analysis/R/plot_utils/dge_utils_and_plots.R')
 
 # computing the CS -----
 DATA_PATH = '/orfeo/cephfs/scratch/cdslab/gsantacatterina/organoids_proj/results'
-SCE_PATH = "/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj/data/scexp_karyo_all_organoids_filt.rds"
+# SCE_PATH = "/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj/data/scexp_karyo_all_organoids_filt.rds"
 META_PATH = "/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj/data/karyotypes_genes_filtered_scrna.rds"
 
-MIN_SAMPLES = 2
+MIN_SAMPLES = 1
 
 # Get gene/karyotypes with at least two samples
 karyotypes_df_all = readRDS(META_PATH)
@@ -66,39 +66,14 @@ df = df %>%
 
 # computing CS per karyotype
 df = df %>%
-  # mutate(CS = DNA_lfc - lfc) #%>%
   dplyr::mutate(CS = ifelse(DNA_lfc > 0, DNA_lfc - lfc, lfc - DNA_lfc)) 
-
-# weighting the CS per number of samples for each karyotype
-df_tot = df %>% 
-  group_by(name, omic) %>% 
-  mutate(
-    CS_tot = sum(CS*n)/sum(n)
-  )
-  
 
 df_mean_CS = df %>%
   dplyr::group_by(name, omic) %>%
   dplyr::mutate(mean_CS = mean(CS)) #%>%
   # tidyr::pivot_wider(values_from = mean_CS, names_from = omic)
 
-saveRDS(df_mean_CS, 'data/compensation/cs_mean_across_karyos.rds')
-
-
-p1 = df_tot %>% 
-  ggplot(aes(
-    y = CS_tot, 
-    x = omic
-  )) + 
-  geom_violin()
-
-p2 = df_mean_CS %>% 
-  ggplot(aes(
-    y = mean_CS, 
-    x = omic
-  )) + 
-  geom_violin()
-
+saveRDS(df_mean_CS, 'data/compensation/cs_mean_across_karyos_min_1.rds')
 
 df %>% 
   dplyr::select(karyotype, name, CS, omic, DNA_lfc) %>% 
@@ -109,7 +84,4 @@ df %>%
   geom_vline(xintercept = 0, linetype = 'dashed', color = 'red') + 
   geom_hline(yintercept = 0, linetype = 'dashed', color = 'red')
 
-saveRDS(df, 'data/compensation/cs_results.rds')
-
-# trying to compute a cs per karyotype
-
+saveRDS(df, 'data/compensation/cs_results_min_1.rds')
