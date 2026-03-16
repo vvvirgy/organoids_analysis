@@ -192,12 +192,13 @@ df_expected_ratio = dplyr::tibble(
 p_dna = df_dna %>%
   #dplyr::mutate(group = ifelse(name %in% corum_genes, "complex", "non-complex")) %>% 
   ggplot(mapping = aes(x = karyotype, y = DNA_lfc)) +
-  geom_violin() +
-  geom_boxplot(outliers = F, width = .1, fill = omic_colors["DNA"]) +
+  #geom_violin() +
+  geom_boxplot(outliers = F, fill = omic_colors["DNA"]) +
+  #geom_boxplot(outliers = F, width = .1, fill = omic_colors["DNA"]) +
   
   #scale_fill_manual(values = c("non-complex" = "#E69F00", "complex" = "#56B4E9")) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
-  # geom_point(df_expected_ratio, mapping = aes(x = karyotype, y = value), inherit.aes = F, col = "firebrick3", size = 1) +
+  geom_point(df_expected_ratio, mapping = aes(x = karyotype, y = value), inherit.aes = F, col = "firebrick3") +
   theme_bw() +
   labs(y = "DNA log-ratio") +
   theme(
