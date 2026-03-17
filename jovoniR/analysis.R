@@ -192,12 +192,13 @@ df_expected_ratio = dplyr::tibble(
 p_dna = df_dna %>%
   #dplyr::mutate(group = ifelse(name %in% corum_genes, "complex", "non-complex")) %>% 
   ggplot(mapping = aes(x = karyotype, y = DNA_lfc)) +
-  geom_violin() +
-  geom_boxplot(outliers = F, width = .1, fill = omic_colors["DNA"]) +
+  #geom_violin() +
+  geom_boxplot(outliers = F, fill = omic_colors["DNA"]) +
+  #geom_boxplot(outliers = F, width = .1, fill = omic_colors["DNA"]) +
   
   #scale_fill_manual(values = c("non-complex" = "#E69F00", "complex" = "#56B4E9")) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
-  # geom_point(df_expected_ratio, mapping = aes(x = karyotype, y = value), inherit.aes = F, col = "firebrick3", size = 1) +
+  geom_point(df_expected_ratio, mapping = aes(x = karyotype, y = value), inherit.aes = F, col = "firebrick3") +
   theme_bw() +
   labs(y = "DNA log-ratio") +
   theme(
@@ -254,7 +255,9 @@ plot_data <- df %>%
   tidyr::unnest(stats) %>%
   dplyr::select(-data) %>%
   # Add stars for the >50% check
-  dplyr::mutate(sig_50 = ifelse(low > 0.5, "*", ""))
+  dplyr::mutate(sig_50 = ifelse(low > 0.5, "*", "")) %>% 
+  dplyr::mutate(p_prot_gt_rna = ifelse(p_prot_gt_rna <= 0.001, "<0.001", paste0("=", round(p_prot_gt_rna, 3))))
+
 
 # 3. Plotting
 p_compensated_genes_fraction = ggplot(plot_data, aes(x = karyotype, y = f_mean, fill = omic)) +
@@ -265,7 +268,7 @@ p_compensated_genes_fraction = ggplot(plot_data, aes(x = karyotype, y = f_mean, 
   geom_text(aes(label = sig_50, y = high + 0.02), 
             position = position_dodge(width = 0.8), size = 6) +
   # Label for Protein > RNA (Once per karyotype)
-  geom_text(aes(label = paste0("p=", round(p_prot_gt_rna, 3)), y = 1.001), 
+  geom_text(aes(label = paste0("p", p_prot_gt_rna), y = 1.001), 
             data = subset(plot_data, omic == "Protein"), 
             vjust = -0.5, size = 3.5, fontface = "italic") +
   theme_bw() +
