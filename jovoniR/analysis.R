@@ -105,8 +105,8 @@ df = df %>% dplyr::filter(omic != "DNA")
 
 df = df %>% 
   ungroup() %>% 
-  # dplyr::left_join(df_dna %>% dplyr::select(!omic), by = join_by("name" == "name", "karyotype" == "karyotype")) %>% 
-  dplyr::left_join(df_dna) %>% 
+  #dplyr::left_join(df_dna %>% dplyr::select(!omic), by = join_by("name" == "name", "karyotype" == "karyotype")) %>% 
+  dplyr::left_join(df_dna %>% dplyr::select(DNA_lfc, name, karyotype)) %>% 
   dplyr::mutate(CS = ifelse(DNA_lfc > 0, DNA_lfc - lfc, lfc - DNA_lfc)) 
 
 # Volcano plot
@@ -129,6 +129,11 @@ p_volcano = df_volcano_and_bar %>%
   theme_bw() +
   scale_color_manual(values = c("Up" = "firebrick", "Down" = "darkblue", "Not differential" = "gray50")) +
   labs(x = "logFC", y = "-log10(adj-p-value)", col = "DE class", alpha = "Adjusted p-value")
+p_volcano
+
+ggsave(file.path(IMG_PATH, "volcano_full.pdf"), width = 10, height = 5, units = "in")
+ggsave(file.path(IMG_PATH, "volcano_full.png"), width = 10, height = 5, units = "in", dpi = 450)
+saveRDS(p_volcano, file.path(IMG_PATH, "volcano_full.rds"))
 
 p_bar = df_volcano_and_bar %>% 
   dplyr::filter(adj_pval <= .05) %>% 
@@ -142,12 +147,45 @@ p_bar = df_volcano_and_bar %>%
   theme_bw() +
   labs(x = "", y = "Number of genes", fill = "DE class") +
   theme(axis.ticks.y = element_blank())
+p_bar
 
-p_volcan_and_bar = p_volcano + p_bar + 
-  plot_layout(ncol = 1, nrow = 2, heights = c(2,1)) +
-  plot_annotation(tag_levels = c("A")) & theme(plot.tag = element_text(face = "bold"))
+ggsave(file.path(IMG_PATH, "deg_barplot_full.pdf"), width = 10, height = 5, units = "in")
+ggsave(file.path(IMG_PATH, "deg_barplot_full.png"), width = 10, height = 5, units = "in", dpi = 450)
+saveRDS(p_bar, file.path(IMG_PATH, "deg_barplot_full.rds"))
 
-ggsave("../img/volcano_and_bar.pdf", plot = p_volcan_and_bar, width = 10, height = 7, units = "in")
+
+p_volcano_sub = df_volcano_and_bar %>% 
+  dplyr::filter(karyotype %in% c("LOH")) %>% 
+  ggplot(mapping = aes(x = lfc, y = -log10(adj_pval), col = FC_class, alpha = signif)) +
+  geom_point(size = .75) +
+  facet_wrap(~omic, scales = "free_y", nrow = 2) +
+  theme_bw() +
+  scale_color_manual(values = c("Up" = "firebrick", "Down" = "darkblue", "Not differential" = "gray50")) +
+  labs(x = "logFC", y = "-log10(adj-p-value)", col = "DE class", alpha = "Adjusted p-value")
+p_volcano_sub
+
+ggsave(file.path(IMG_PATH, "volcano_sub.pdf"), width = 6, height = 5, units = "in")
+ggsave(file.path(IMG_PATH, "volcano_sub.png"), width = 6, height = 5, units = "in", dpi = 450)
+saveRDS(p_volcano_sub, file.path(IMG_PATH, "volcano_sub.rds"))
+
+p_bar_sub = df_volcano_and_bar %>% 
+  dplyr::mutate(FC_class = factor(FC_class, levels = c("Down", "Not differential", "Up"))) %>% 
+  dplyr::filter(karyotype %in% c("LOH")) %>% 
+  dplyr::filter(adj_pval <= .05) %>% 
+  dplyr::group_by(FC_class, karyotype, omic) %>% 
+  dplyr::summarise(n = n()) %>% 
+  ggplot(mapping = aes(x = "", y = n, fill = FC_class)) +
+  geom_col(position = "dodge2") +
+  facet_wrap(~omic, nrow = 2) +
+  scale_fill_manual(values = c("Up" = "firebrick", "Down" = "darkblue", "Not differential" = "gray50")) +
+  theme_bw() +
+  labs(x = "", y = "Number of genes", fill = "DE class") +
+  theme(axis.ticks.x = element_blank())
+p_bar_sub
+
+ggsave(file.path(IMG_PATH, "dge_barplot_sub.pdf"), width = 6, height = 5, units = "in")
+ggsave(file.path(IMG_PATH, "dge_barplot_sub.png"), width = 6, height = 5, units = "in", dpi = 450)
+saveRDS(p_bar_sub, file.path(IMG_PATH, "dge_barplot_sub.rds"))
   
   
 # # Perform CS computation per omic, karyotype, and group ####
@@ -258,16 +296,14 @@ saveRDS(p_dna, file.path(IMG_PATH, "DNA_ratio.rds"))
 
 # RNA vs DNA plot of compensation fraction ####
 compare_omics_boot <- function(sub_df, n_genes = 500, n_boot = 1000) {
-  # Separate data by omic
+  
   rna_labels <- sub_df$CS_class[sub_df$omic == "RNA"]
   prot_labels <- sub_df$CS_class[sub_df$omic == "Protein"]
   
-  # Safety: check if we have enough data for both
   if(length(rna_labels) == 0 | length(prot_labels) == 0) return(NULL)
   
-  # Perform paired subsampling
   boot_results <- replicate(n_boot, {
-    # Subsample 500 from each (with replacement if group < 500)
+    
     s_rna  <- sample(rna_labels, size = n_genes, replace = (length(rna_labels) < n_genes))
     s_prot <- sample(prot_labels, size = n_genes, replace = (length(prot_labels) < n_genes))
     
@@ -275,10 +311,9 @@ compare_omics_boot <- function(sub_df, n_genes = 500, n_boot = 1000) {
     f_prot <- sum(s_prot == "CS>0") / n_genes
     
     c(f_rna = f_rna, f_prot = f_prot, diff = f_prot - f_rna)
+    
   }) %>% t() %>% as.data.frame()
   
-  # Calculate Stats
-  # p-value: how often is RNA >= Protein? (Testing if Protein is significantly HIGHER)
   p_val <- sum(boot_results$diff <= 0) / n_boot
   
   data.frame(
@@ -290,36 +325,83 @@ compare_omics_boot <- function(sub_df, n_genes = 500, n_boot = 1000) {
   )
 }
 
-# 2. Execute Analysis
+# 2. Run analysis
 plot_data <- df %>%
   dplyr::mutate(CS_class = ifelse(CS > 0, "CS>0", "CS<0")) %>%
   dplyr::group_by(karyotype) %>%
-  tidyr::nest() %>%
-  dplyr::mutate(stats = purrr::map(data, ~compare_omics_boot(.x, n_genes = 500))) %>%
-  tidyr::unnest(stats) %>%
+  nest() %>%
+  dplyr::mutate(stats = map(data, ~compare_omics_boot(.x, n_genes = 500))) %>%
+  unnest(stats) %>%
   dplyr::select(-data) %>%
-  # Add stars for the >50% check
-  dplyr::mutate(sig_50 = ifelse(low > 0.5, "*", "")) %>% 
-  dplyr::mutate(p_prot_gt_rna = ifelse(p_prot_gt_rna <= 0.001, "<0.001", paste0("=", round(p_prot_gt_rna, 3)))) %>% 
-  dplyr::mutate(karyotype = karyotype_mapping[karyotype]) %>% 
-  dplyr::mutate(karyotype = factor(karyotype, levels = karyotype_mapping))
+  mutate(sig_50 = ifelse(low > 0.5, "*", "")) %>%
+  mutate(
+    p_prot_gt_rna = ifelse(
+      p_prot_gt_rna <= 0.001, "**",
+      ifelse(
+        p_prot_gt_rna <= 0.05, "*",
+        "ns"
+      )
+    )
+  ) %>%
+  mutate(karyotype = karyotype_mapping[karyotype]) %>%
+  mutate(karyotype = factor(karyotype, levels = karyotype_mapping))
 
-# 3. Plotting
-p_compensated_genes_fraction = ggplot(plot_data, aes(x = karyotype, y = f_mean, fill = omic)) +
+# 3. Create bracket annotation dataset
+pvals_df <- plot_data %>%
+  group_by(karyotype) %>%
+  summarise(
+    y_position = max(high) + 0.075,
+    p_label = unique(p_prot_gt_rna),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    xmin = as.numeric(karyotype) - 0.2,
+    xmax = as.numeric(karyotype) + 0.2,
+    annotation = paste0(p_label)
+  )
+
+# 4. Plot
+p_compensated_genes_fraction <- ggplot(plot_data, aes(x = karyotype, y = f_mean, fill = omic)) +
+  
   geom_col(position = position_dodge(width = 0.8), width = 0.7) +
-  geom_errorbar(aes(ymin = low, ymax = high), 
-                position = position_dodge(width = 0.8), width = 0.2) +
-  # Label for >50% (Individual bars)
-  geom_text(aes(label = sig_50, y = high + 0.02), 
-            position = position_dodge(width = 0.8), size = 6) +
-  # Label for Protein > RNA (Once per karyotype)
-  geom_text(aes(label = paste0("p", p_prot_gt_rna), y = 1.001), 
-            data = subset(plot_data, omic == "Protein"), 
-            vjust = -0.5, size = 3.5, fontface = "italic") +
+  
+  geom_errorbar(
+    aes(ymin = low, ymax = high),
+    position = position_dodge(width = 0.8),
+    width = 0.2
+  ) +
+  
+  # Star if >50%
+  geom_text(
+    aes(label = sig_50, y = high + 0.02),
+    position = position_dodge(width = 0.8),
+    size = 6
+  ) +
+  
+  # Brackets with p-values
+  geom_signif(
+    data = pvals_df,
+    aes(
+      xmin = xmin,
+      xmax = xmax,
+      annotations = annotation,
+      y_position = y_position, group = karyotype
+    ),
+    manual = TRUE,
+    textsize = 3.5,
+    tip_length = 0.01, inherit.aes = F
+  ) +
+  
   theme_bw() +
   scale_fill_manual(values = omic_colors) +
-  labs(y = "Fraction of compensated genes", fill = "", x = "Karyotype")
-p_compensated_genes_fraction
+  labs(
+    y = "Fraction of compensated genes",
+    fill = "",
+    x = "Karyotype"
+  )
+
+# p_compensated_genes_fraction +
+#   coord_flip()
 
 ggsave(file.path(IMG_PATH, "compensated_frac.pdf"), width = 5, height = 4, units = "in", plot = p_compensated_genes_fraction)
 ggsave(file.path(IMG_PATH, "compensated_frac.png"), width = 5, height = 4, units = "in", dpi = 450, plot = p_compensated_genes_fraction)

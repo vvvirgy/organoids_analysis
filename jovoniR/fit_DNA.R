@@ -2,6 +2,10 @@
 rm(list = ls())
 source("utils.R")
 
+library(devil)
+library(tidyverse)
+library(ggplot2)
+
 df_DNA_path = "/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj/data/cumulative_dp.rds"
 df_DNA = readRDS(df_DNA_path)
 
