@@ -50,13 +50,14 @@ res_prot = readRDS("/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj/data/fc
   dplyr::rename(coef = condition, name = PG.Genes, lfc = diff, pval = p.val, adj_pval = p.adj) %>% 
   dplyr::mutate(omic = "Protein") %>% 
   tidyr::separate(coef, sep = "X", into = c(".", "karyotype")) %>% 
-  dplyr::select(lfc, name, karyotype, omic) %>% 
+  dplyr::select(lfc, name, karyotype, omic, pval, adj_pval) %>% 
   mutate(karyotype = str_replace(karyotype, "\\.", ":")) %>% 
   dplyr::group_by(karyotype)
 
 df_dna = readRDS("results/DNA_lfc.rds") %>% dplyr::rename(DNA_lfc = lfc)
 
-df = dplyr::bind_rows(res_rna, res_prot) %>% na.omit()
+df = dplyr::bind_rows(res_rna, res_prot) %>% 
+  dplyr::filter(!is.na(lfc))
 df$omic = factor(df$omic, levels = c("RNA", "Protein"))
 
 df %>% saveRDS(file.path(RES_PATH, "lfc_prot_and_rna_bind.rds"))
@@ -68,12 +69,10 @@ if (use_only_common_genes) {
 }
 
 df = df %>% 
-  dplyr::left_join(karyotypes_df_good) %>% 
-  na.omit()
+  dplyr::left_join(karyotypes_df_good)
 
 df_dna = df_dna %>% 
-  dplyr::left_join(karyotypes_df_good) %>% 
-  na.omit()
+  dplyr::left_join(karyotypes_df_good)
 
 # df %>% dplyr::filter(name == "AASS")
 genes_with_4_karyotypes = df %>%
@@ -110,6 +109,47 @@ df = df %>%
   dplyr::left_join(df_dna) %>% 
   dplyr::mutate(CS = ifelse(DNA_lfc > 0, DNA_lfc - lfc, lfc - DNA_lfc)) 
 
+# Volcano plot
+
+df_volcano_and_bar = df %>% 
+  dplyr::select(pval, lfc, name, karyotype, omic) %>% 
+  dplyr::group_by(omic, karyotype) %>% 
+  dplyr::mutate(adj_pval = p.adjust(pval, "BH") + 1e-300) %>% 
+  dplyr::mutate(signif = ifelse(adj_pval <= .05, "< 0.05", "ns")) %>% 
+  dplyr::mutate(FC_class = ifelse((adj_pval <= .05) & (lfc > 0.75), "Up", ifelse((adj_pval <= .05) & (lfc < -0.75), "Down", "Not differential"))) %>% 
+  dplyr::mutate(FC_class = factor(FC_class, levels = c("Not differential", "Up", "Down"))) %>% 
+  dplyr::mutate(signif = factor(signif, levels = c("ns", "< 0.05"))) %>% 
+  dplyr::mutate(karyotype = karyotype_mapping[karyotype]) %>% 
+  dplyr::mutate(karyotype = factor(karyotype, levels = karyotype_mapping))
+  
+p_volcano = df_volcano_and_bar %>% 
+  ggplot(mapping = aes(x = lfc, y = -log10(adj_pval), col = FC_class, alpha = signif)) +
+  geom_point(size = .75) +
+  facet_grid(omic~karyotype, scales = "free_y") +
+  theme_bw() +
+  scale_color_manual(values = c("Up" = "firebrick", "Down" = "darkblue", "Not differential" = "gray50")) +
+  labs(x = "logFC", y = "-log10(adj-p-value)", col = "DE class", alpha = "Adjusted p-value")
+
+p_bar = df_volcano_and_bar %>% 
+  dplyr::filter(adj_pval <= .05) %>% 
+  dplyr::group_by(FC_class, karyotype, omic) %>% 
+  dplyr::summarise(n = n()) %>% 
+  ggplot(mapping = aes(x = "", y = n, fill = FC_class)) +
+  geom_col(position = "dodge2") +
+  facet_grid(omic~karyotype) +
+  coord_flip() +
+  scale_fill_manual(values = c("Up" = "firebrick", "Down" = "darkblue", "Not differential" = "gray50")) +
+  theme_bw() +
+  labs(x = "", y = "Number of genes", fill = "DE class") +
+  theme(axis.ticks.y = element_blank())
+
+p_volcan_and_bar = p_volcano + p_bar + 
+  plot_layout(ncol = 1, nrow = 2, heights = c(2,1)) +
+  plot_annotation(tag_levels = c("A")) & theme(plot.tag = element_text(face = "bold"))
+
+ggsave("../img/volcano_and_bar.pdf", plot = p_volcan_and_bar, width = 10, height = 7, units = "in")
+  
+  
 # # Perform CS computation per omic, karyotype, and group ####
 # dir.create(file.path(RES_PATH, "CS_tables"), recursive = T)
 # 
@@ -189,7 +229,11 @@ df_expected_ratio = dplyr::tibble(
   karyotype = c("1:0", "2:0", "2:1", "2:2"),
   value = c(-1.0, 0, 0.5, 1)
 )
+df_expected_ratio$karyotype = karyotype_mapping[df_expected_ratio$karyotype]
+
 p_dna = df_dna %>%
+  dplyr::mutate(karyotype = karyotype_mapping[karyotype]) %>% 
+  dplyr::mutate(karyotype = factor(karyotype, levels = karyotype_mapping)) %>% 
   #dplyr::mutate(group = ifelse(name %in% corum_genes, "complex", "non-complex")) %>% 
   ggplot(mapping = aes(x = karyotype, y = DNA_lfc)) +
   #geom_violin() +
@@ -256,8 +300,9 @@ plot_data <- df %>%
   dplyr::select(-data) %>%
   # Add stars for the >50% check
   dplyr::mutate(sig_50 = ifelse(low > 0.5, "*", "")) %>% 
-  dplyr::mutate(p_prot_gt_rna = ifelse(p_prot_gt_rna <= 0.001, "<0.001", paste0("=", round(p_prot_gt_rna, 3))))
-
+  dplyr::mutate(p_prot_gt_rna = ifelse(p_prot_gt_rna <= 0.001, "<0.001", paste0("=", round(p_prot_gt_rna, 3)))) %>% 
+  dplyr::mutate(karyotype = karyotype_mapping[karyotype]) %>% 
+  dplyr::mutate(karyotype = factor(karyotype, levels = karyotype_mapping))
 
 # 3. Plotting
 p_compensated_genes_fraction = ggplot(plot_data, aes(x = karyotype, y = f_mean, fill = omic)) +
@@ -475,9 +520,12 @@ df_beeswarm = dplyr::bind_rows(
     dplyr::select(lfc, karyotype, name, omic) %>% 
     dplyr::left_join(df_groups %>% dplyr::select(name, reg_group))
 ) %>% 
-  na.omit() %>% 
-  dplyr::mutate(karyotype = factor(karyotype, levels = c("1:0", "2:0", "2:1", "2:2")))
+  # na.omit() %>% 
+  dplyr::mutate(karyotype = factor(karyotype, levels = c("1:0", "2:0", "2:1", "2:2"))) %>% 
+  dplyr::mutate(karyotype = karyotype_mapping[karyotype]) %>% 
+  dplyr::mutate(karyotype = factor(karyotype, levels = karyotype_mapping))
 
+pd = position_dodge(width = 0.4)
 p_omics_trend_by_reg_groups = df_beeswarm %>%
   dplyr::filter(reg_group != "Intermediate/Other") %>% 
   group_by(omic, reg_group, karyotype) %>%
@@ -507,7 +555,8 @@ p_omics_trend_by_reg_groups = df_beeswarm %>%
     y = "Log2 FC",
     color = "Omic"
   ) +
-  scale_x_discrete(labels = c("1:0", "2:0", "2:1", "2:2"))
+  scale_x_discrete(labels = c("LOH", "CNLOH", "Trisomy", "Tetrasomy")) +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
 p_omics_trend_by_reg_groups
 
 ggsave(file.path(IMG_PATH, "omics_trends.pdf"), width = 12, height = 3.5, units = "in", plot = p_omics_trend_by_reg_groups)
