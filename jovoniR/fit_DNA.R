@@ -26,6 +26,7 @@ sfs <- sfs_baseline / exp(mean(log(sfs_baseline)))
 names(sfs) = samples
 
 DNA_res = dplyr::tibble()
+
 for (g in genes) {
   idx = which(g == genes)
   if (idx %% 100 == 0) print(idx)
@@ -52,20 +53,37 @@ for (g in genes) {
   
   fit <- suppressMessages(my_fit_devil(input_matrix = t(as.matrix(counts)), design_matrix = design_matrix, 
                                 overdispersion = "MOM", size_factors = current_sfs, max_iter = 500, verbose = TRUE))
-  # fit = my_fit_devil(input_matrix = t(as.matrix(counts)), design_matrix = design_matrix, 
-  #                    overdispersion = "MOM", size_factors = current_sfs, max_iter = 500, verbose = TRUE)
   
-  lfcs = c(fit$beta / log(2))
-  names(lfcs) = str_replace_all(colnames(design_matrix), "karyotype", "")
-  lfcs = lfcs[!grepl("Int", names(lfcs))]
+  # Test DE
+  sample_ids = clusters
+  coeffs = colnames(design_matrix)
+  
+  lfc_res = dplyr::tibble()
+  for (c in coeffs) {
+    contrast_vec = as.numeric(coeffs == c)
+    test_res = devil::test_de(devil.fit = fit, contrast = contrast_vec, clusters = sample_ids) %>% dplyr::mutate(name = g)
+    
+    if (!is.null(test_res)) {
+      lfc_res = dplyr::bind_rows(
+        lfc_res,
+        test_res %>% dplyr::filter(name == g) %>% 
+          dplyr::mutate(karyotype = str_replace(c, "karyotype", "")) %>% 
+          dplyr::filter(karyotype != "(Intercept)")
+      )
+    }
+  }
+
+  # lfcs = c(fit$beta / log(2))
+  # names(lfcs) = str_replace_all(colnames(design_matrix), "karyotype", "")
+  # lfcs = lfcs[!grepl("Int", names(lfcs))]
   
   DNA_res = dplyr::bind_rows(
-    DNA_res,
-    dplyr::tibble(
-      lfc = lfcs, 
-      karyotype = names(lfcs), 
-      name = g
-    )  
+    DNA_res, lfc_res
+    # dplyr::tibble(
+    #   lfc = lfcs, 
+    #   karyotype = names(lfcs), 
+    #   name = g
+    # )  
   )
 }
 
