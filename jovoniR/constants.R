@@ -6,11 +6,11 @@ omic_colors = c(
 )
 
 category_colors <- c(
-  "Compensated" = "#AD002AB2",
+  "Fully compensated" = "#AD002AB2",
   "Prot-comp." = "#E18727B2",
   "RNA-comp." = "#20854Eb2",
   "Hyper-responders" = "#00468BB2",
   "Intermediate/Other" = "gainsboro"
 )
 
-genes_to_plot = c('MERTK', 'KRAS', 'PTK7', 'FYN', 'ABCB1', 'CDX2', 'APOBEC3C')
+genes_to_plot = c('MERTK', 'KRAS', 'PTK7', 'FYN', 'ABCB1', 'CDX2', 'APOBEC3C', 'TGFBI', 'APOBEC3C', 'RHOC', 'FN1')
