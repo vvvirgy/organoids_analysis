@@ -554,10 +554,13 @@ ggsave(plot = reg_groups_plot, filename = file.path(IMG_PATH, "reg_groups_plot.p
 ggsave(plot = reg_groups_plot, filename = file.path(IMG_PATH, "reg_groups_plot.png"), width = 5, height = 3.5, dpi = 450, units = "in")
 saveRDS(reg_groups_plot, file.path(IMG_PATH, "reg_groups_plot.rds"))
 
-reg_groups_plot_w_annotation = reg_groups_plot + ggrepel::geom_label_repel(mapping = aes(label = label), show.legend = F, max.overlaps = Inf)
+reg_groups_plot_w_annotation = reg_groups_plot + 
+  ggrepel::geom_label_repel(mapping = aes(label = label), show.legend = F, max.overlaps = Inf) + 
+  theme(legend.position = 'bottom') + 
+  guides(color = guide_legend(ncol = 3))
 
-ggsave(plot = reg_groups_plot_w_annotation, filename = file.path(IMG_PATH, "reg_groups_plot_annotated.pdf"), width = 5, height = 3.5)
-ggsave(plot = reg_groups_plot_w_annotation, filename = file.path(IMG_PATH, "reg_groups_plot_annotated.png"), width = 5, height = 3.5, dpi = 450, units = "in")
+ggsave(plot = reg_groups_plot_w_annotation, filename = file.path(IMG_PATH, "reg_groups_plot_annotated.pdf"), width = 5.5, height = 6.5)
+ggsave(plot = reg_groups_plot_w_annotation, filename = file.path(IMG_PATH, "reg_groups_plot_annotated.png"), width = 5.5, height = 6.5, dpi = 450, units = "in")
 saveRDS(reg_groups_plot_w_annotation, file.path(IMG_PATH, "reg_groups_plot_annotated.rds"))
 
 # og and tsg by reg groups (excluding intermediate)
