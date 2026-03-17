@@ -14,3 +14,8 @@ category_colors <- c(
 )
 
 genes_to_plot = c('MERTK', 'KRAS', 'PTK7', 'FYN', 'ABCB1', 'CDX2', 'APOBEC3C')
+
+karyotype_mapping = c("1:0" =  "LOH",
+                      "2:0" = "CNLOH",
+                      "2:1" = "Trisomy", 
+                      "2:2" = "Tetrasomy")
