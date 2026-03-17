@@ -124,9 +124,18 @@ samples = metadata$sample_id %>% unique
 karyo = genes_karyo_muts %>% 
   filter(sample %in% samples) %>% 
   # filter(hgnc_symbol == 'SMAD2') %>% 
-  dplyr::select(sample, hgnc_symbol, karyotype) %>% 
-  distinct() 
+  # dplyr::select(sample, hgnc_symbol, karyotype) %>% 
+  distinct() %>% 
+  mutate(mut_status = ifelse(
+    mut_consequence %in% c('wild-type', 'synonymous_variant'), 'wild-type', 'mutated'
+  ))
 saveRDS(karyo, 'data/karyotypes_genes_filtered_scrna.rds')
+
+# adding mutation state
+karyo = readRDS('data/karyotypes_genes_filtered_scrna.rds')
+metadata = readRDS('data/new_metadata_sc.rds')
+
+
 
 # counts = data %>% 
 #   do.call('full_join', .)

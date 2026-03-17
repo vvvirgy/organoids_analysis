@@ -1,6 +1,6 @@
 library(tidyverse)
 source('organoids_analysis/R/functions_utils/fit_plots.R')
-source('organoids_analysis/R/scRNA/cna_comparison_utils.R')
+source('organoids_analysis/R/functions_utils/cna_comparison_utils.R')
 
 dict = readRDS('data/full_dict_dna_rna_prot.rds')
 genes_cna_status = readRDS('data/processed_data/karyotypes_mutations_all_genes_qc_ccf.rds')

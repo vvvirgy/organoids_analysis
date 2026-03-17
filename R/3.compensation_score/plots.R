@@ -3,7 +3,8 @@ rm(list=ls())
 .libPaths()
 library(tidyverse)
 library(patchwork)
-source('/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj/organoids_analysis/R/plot_utils/colors.R')
+# source('/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj/organoids_analysis/R/plot_utils/colors.R')
+source('organoids_analysis/jovoniR/constants.R')
 
 df_groups = readRDS('data/compensation/cs_classification_min_1.rds')
 
@@ -158,7 +159,17 @@ df %>%
   theme_bw() + 
   scale_fill_manual(values = omic_colors) + 
   facet_wrap(~name, nrow = 1) 
-ggsave('')
+
+# checking drivers
+intogen_drivers = read.table('../2024-06-18_IntOGen-Drivers/Compendium_Cancer_Genes.tsv', sep = '\t', header = T)
+coad_drivers = intogen_drivers %>% 
+  dplyr::filter(CANCER_TYPE == 'COAD') %>% 
+  dplyr::select(SYMBOL, IS_DRIVER) %>% 
+  dplyr::distinct() %>% 
+  pull(SYMBOL)
+
+df_groups
+
 
 
 
