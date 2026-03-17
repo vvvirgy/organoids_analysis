@@ -3,7 +3,7 @@ args <- commandArgs(trailingOnly = TRUE)
 
 # Default values if not provided
 sf_method  <- ifelse(length(args) >= 1, args[1], "psinorm")
-use_stable <- ifelse(length(args) >= 2, as.logical(args[2]), TRUE)
+use_stable <- ifelse(length(args) >= 2, as.logical(args[2]), FALSE)
 
 cat(paste0("Running with sf_method: ", sf_method, " | use_stable: ", use_stable, "\n"))
 
@@ -77,8 +77,9 @@ if (use_stable) {
 
 # --- LFC Analysis ---
 all_genes = rownames(input_data$counts)
-
+gene = "SAMD11"
 all_lfc_res = lapply(all_genes, function(gene) {
+  print(gene)
   karyotypes_df = karyotypes_df_all %>% dplyr::filter(gene == hgnc_symbol)
   if (nrow(karyotypes_df) == 0) return(NULL)
   
@@ -110,7 +111,25 @@ all_lfc_res = lapply(all_genes, function(gene) {
   names(lfcs) = str_replace_all(colnames(design_matrix), "karyotype", "")
   lfcs = lfcs[!grepl("Int", names(lfcs))]
   
-  dplyr::tibble(lfc = lfcs, karyotype = names(lfcs), name = gene)
+  # Test DE
+  sample_ids = input_data$meta$sample_id
+  coeffs = colnames(design_matrix)
+  
+  lfc_res = dplyr::tibble()
+  for (c in coeffs) {
+    contrast_vec = as.numeric(coeffs == c)
+    test_res = devil::test_de(devil.fit = fit, contrast = contrast_vec, clusters = sample_ids) %>% dplyr::mutate(name = gene)
+    
+    if (!is.null(test_res)) {
+      lfc_res = dplyr::bind_rows(
+        lfc_res,
+        test_res %>% dplyr::filter(name == gene) %>% dplyr::mutate(karyotype = str_replace(c, "karyotype", "")) %>% dplyr::filter(karyotype != "(Intercept)")
+      )
+    }
+  }
+  
+  # dplyr::tibble(lfc = lfcs, karyotype = names(lfcs), name = gene)
+  lfc_res
 })
 
 all_lfc_res = do.call("bind_rows", all_lfc_res)
