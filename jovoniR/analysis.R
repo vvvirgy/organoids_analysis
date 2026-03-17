@@ -74,6 +74,19 @@ df = df %>%
 df_dna = df_dna %>% 
   dplyr::left_join(karyotypes_df_good)
 
+# Save all omics to CSV
+df_dge_res_all_genes = dplyr::bind_rows(
+  df %>% dplyr::select(pval, adj_pval, lfc, name, karyotype, omic),
+  df_dna %>% dplyr::rename(lfc = DNA_lfc) %>% dplyr::mutate(omic = "DNA") %>% dplyr::select(pval, adj_pval, lfc, name, karyotype, omic)
+) %>% 
+  dplyr::group_by(name, karyotype) %>% 
+  dplyr::mutate(n = n()) %>% 
+  dplyr::filter(n == 3) %>% 
+  dplyr::select(!n) %>% 
+  dplyr::group_by(karyotype, omic) %>% 
+  dplyr::mutate(adj_pval = p.adjust(pval, "BH")) 
+write_csv(df_dge_res_all_genes, file.path(RES_PATH, "dge_res_all_genes.csv"))
+
 # df %>% dplyr::filter(name == "AASS")
 genes_with_4_karyotypes = df %>%
   dplyr::select(name, karyotype) %>%
