@@ -3,7 +3,9 @@ library(ggupset)
 # install.packages('ggupset')
 library(UpSetR)
 library(gt)
-dict = readRDS('data/full_dict_dna_rna_prot.rds')
+source('organoids_analysis/R/functions_utils/constants.R')
+
+dict = readRDS(file.path(data_path, 'full_dict_dna_rna_prot.rds'))
 
 presence = dict %>% 
   mutate(seq_dna = 
@@ -51,7 +53,7 @@ tb = nsamples %>%
   gt::as_gtable(. , text_grob = gridtext::richtext_grob, plot = T) %>% 
   ggplotify::as.ggplot()
 
-ggsave('res/tb_cohort_description.pdf', width = 8)
+ggsave(file.path(res_path, 'tb_cohort_description.pdf'), width = 8)
 
 tb_plot = function(data) {
   data %>% 
@@ -113,19 +115,19 @@ presence = dict %>%
            ifelse(!is.na(RNA), 'RNA', NA)) %>% 
   mutate(proteomics = 
            ifelse(!is.na(sample_proteomics_code), 'Proteomics', NA)) %>% 
-  select(fixed_name, seq_dna, seq_rna, proteomics) %>% 
+  dplyr::select(fixed_name, seq_dna, seq_rna, proteomics) %>% 
   distinct() %>% 
-  rename(Proteomics = proteomics) %>% 
-  rename(scRNA = seq_rna) %>% 
-  rename(WGS = seq_dna)
+  dplyr::rename(Proteomics = proteomics) %>% 
+  dplyr::rename(scRNA = seq_rna) %>% 
+  dplyr::rename(WGS = seq_dna)
 
 presence %>% 
   pivot_longer(values_to = 'omic', cols = c(WGS, scRNA, Proteomics)) %>% 
   filter(!is.na(omic)) %>% 
-  select(fixed_name, name) %>% 
+  dplyr::select(fixed_name, name) %>% 
   group_by(fixed_name) %>%
   summarise(name = list(name), .groups = "drop") %>% 
-  rename(Omic = name) %>% 
+  dplyr::rename(Omic = name) %>% 
   ggplot(aes(Omic)) + 
   geom_bar(fill = '#088395', width = .8)+ 
   geom_text(stat='count', aes(label=after_stat(count)), vjust=-1) +

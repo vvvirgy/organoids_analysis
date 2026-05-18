@@ -2,7 +2,7 @@ library(CNAqc)
 library(tidyverse) 
 
 setwd('/orfeo/scratch/cdslab/vgazziero/organoids_prj')
-cnas_path = list.files('data/cnaqc', full.names = T)
+cnas_path = list.files(file.path(data_path, 'cnaqc'), full.names = T)
 cnas = lapply(cnas_path, readRDS)
 names(cnas) = lapply(cnas, function(x) {x$sample}) %>% unlist
 

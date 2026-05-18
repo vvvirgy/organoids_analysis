@@ -1,5 +1,6 @@
+rm(list=ls())
 library(tidyverse)
-library(decoupleR)
+# library(decoupleR)
 
 setwd('/orfeo/scratch/cdslab/vgazziero/organoids_prj/')
 source('/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj/organoids_analysis/jovoniR/constants.R')
@@ -76,13 +77,13 @@ p1 = df %>%
 data = df %>% 
   group_by(name, karyotype) %>%
   filter(n() == 2) %>% 
-  pivot_wider(names_from = omic, values_from = lfc)
+  pivot_wider(names_from = omic, values_from = c(lfc, pval, adj_pval))
 
 corr_res <- data %>%
   group_by(karyotype) %>%
     summarise(
-      spearman_rho = cor(RNA, Protein, method = "spearman"),
-      p_val = cor.test(RNA, Protein, method = "spearman")$p.value,
+      spearman_rho = cor(lfc_RNA, lfc_RNA, method = "spearman"),
+      p_val = cor.test(lfc_RNA, lfc_RNA, method = "spearman")$p.value,
       n_genes = n(),
       .groups = "drop"
     ) %>%
@@ -101,7 +102,8 @@ ggsave('/orfeo/scratch/cdslab/vgazziero/organoids_prj/res/compensation_score/cor
 ggsave('/orfeo/scratch/cdslab/vgazziero/organoids_prj/res/compensation_score/corr_rna_prot.png', width = 10, height = 6)
 
 df = df %>% 
-  dplyr::select(name, omic, karyotype, lfc)
+  dplyr::rename(RNA_pval = )
+  # dplyr::select(name, omic, karyotype, lfc)
 
 write.csv(df, file = '/orfeo/scratch/cdslab/vgazziero/organoids_prj/res/genes_fc/dge_res.csv', quote = F, row.names = F, col.names = T)
 

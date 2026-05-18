@@ -1,16 +1,17 @@
 .libPaths()
 rm(list=ls())
+stewd('/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj')
 library(tidyverse)
 library(CNAqc)
 # source('~/Desktop/lade_scratch/CDSlab/brca_cro_prj/BRCA_CRO/new_analysis/functions/CNA/get_cna_status_region_specific.R')
 # source('/orfeo/cephfs/scratch/area/vgazziero/CDSlab/brca_cro_prj/BRCA_CRO/new_analysis/functions/CNA/get_cna_status_region_specific.R')
-source('/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj/organoids_analysis/R/functions_utils/get_cna_status_region_specific.R')
-source('/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj/organoids_analysis/R/preprocessing/get_cna_function.R')
+source('organoids_analysis/R/functions_utils/get_cna_status_region_specific.R')
+source('organoids_analysis/R/functions_utils/get_cna_function.R')
+source('organoids_analysis/R/functions_utils/constants.R')
 
-setwd('/orfeo/scratch/cdslab/vgazziero/organoids_prj')
-cnas = readRDS('data/cnaqc_v2/cnas_list_v2.rds')
+cnas = readRDS(file.path(data_path, 'cnaqc_v2/cnas_list_v2.rds'))
 
-coad_genes = readRDS('data/all_genes_positions_info.rds')
+coad_genes = readRDS(file.path(data_path, 'utilities/all_genes_positions_info.rds'))
 coad_genes = coad_genes %>% 
   dplyr::relocate(hgnc_symbol, .after = to) %>% 
   # dplyr::filter(chr %in% c('chr5', 'chr17')) %>% 
@@ -32,7 +33,7 @@ genes_karyo = lapply(names(cnas), function(x) {
 }) %>% 
   dplyr::bind_rows()
 
-saveRDS(genes_karyo, '/orfeo/scratch/cdslab/vgazziero/organoids_prj/data/processed_data/karyotypes_all_genes_qc.rds')
+saveRDS(genes_karyo, file.path(data_path, 'processed_data/karyotypes_all_genes_qc.rds'))
 
 # usa solo informazione del karyotype
 

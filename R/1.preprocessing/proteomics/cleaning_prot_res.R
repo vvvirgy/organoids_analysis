@@ -6,11 +6,12 @@ library(parallel)
 library(DEP)
 
 setwd('/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj')
+source('organoids_analysis/R/functions_utils/constants.R')
 # source('organoids_analysis/R/functions_utils/fit_plots.R')
 # source('organoids_analysis/R/scRNA/cna_comparison_utils.R')
 # source('organoids_analysis/R/proteomics_de_utils.R')
 
-dep_res = readRDS('data/dep_by_karyotype_results_v2.rds')
+dep_res = readRDS(file.path(data_path, 'processed_data/protein/dep_by_karyotype_results_v2.rds'))
 
 # getting the results of dge for the specific gene 
 get_dge_res = function(dep, gene) {
@@ -28,7 +29,7 @@ dep_res_fc = parallel::mclapply(dep_res, function(x) {
 print('all fc extracted')
 
 dep_res_fc = bind_rows(dep_res_fc)
-saveRDS(dep_res_fc, 'data/dep_res_fc_v2.rds')
+saveRDS(dep_res_fc, file.path(data_path, 'processed_data/protein/dep_res_fc_v2.rds'))
 
 dep_res_fc_red = dep_res_fc %>% 
   select(PG.Genes, condition, ends_with('CI.L'), ends_with('CI.R'), ends_with('diff'), 
@@ -59,5 +60,5 @@ get_fc_tb_clean = function(tb) {
 
 fc_tb_clean = get_fc_tb_clean(dep_res_fc_red)
 print('results merged')
-saveRDS(fc_tb_clean, 'data/fc_tb_clean_v2.rds')
+saveRDS(fc_tb_clean, file.path(data_path, 'processed_data/protein/fc_tb_clean_v2.rds'))
   

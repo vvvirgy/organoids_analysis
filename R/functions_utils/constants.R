@@ -1,3 +1,6 @@
+data_path = '/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj/data'
+res_path = '/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj/res'
+
 omic_colors = c(
   "DNA" = "#66c2a5",
   "RNA" = "#fc8d62",

@@ -1,9 +1,11 @@
 library(tidyverse)
+setwd('/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj')
 source('organoids_analysis/R/functions_utils/fit_plots.R')
 source('organoids_analysis/R/functions_utils/cna_comparison_utils.R')
+source('organoids_analysis/R/functions_utils/constants.R')
 
-dict = readRDS('data/full_dict_dna_rna_prot.rds')
-genes_cna_status = readRDS('data/processed_data/karyotypes_mutations_all_genes_qc_ccf.rds')
+dict = readRDS(file.path(data_path, 'full_dict_dna_rna_prot.rds'))
+genes_cna_status = readRDS(file.path(data_path, 'processed_data/karyotypes_mutations_all_genes_qc_ccf.rds'))
 
 samples_check = dict %>% 
   dplyr::select(proteomics_code, fixed_name) %>%
@@ -11,7 +13,7 @@ samples_check = dict %>%
 
 genes_to_check = genes_cna_status$hgnc_symbol %>% unique
 
-coad_genes = readRDS('data/all_genes_positions_info.rds')
+coad_genes = readRDS(file.path(data_path, 'all_genes_positions_info.rds'))
 genes = coad_genes %>% 
   dplyr::relocate(hgnc_symbol, .after = to) %>% 
   # dplyr::filter(chr %in% c('chr5', 'chr17')) %>% 
@@ -41,5 +43,5 @@ genes_filtered_v2 %>%
   count() %>% 
   arrange(desc(n))
 
-saveRDS(genes_filtered_v2, 'data/processed_data/genes_filtered_karyo_mut_status_filt_ccf_08.rds')
-saveRDS(genes_filtered_test_v2, 'data/processed_data/genes_filtered_karyo_mut_status_full_filt_ccf_08.rds')
+saveRDS(genes_filtered_v2, file.path(data_path, 'processed_data/genes_filtered_karyo_mut_status_filt_ccf_08.rds'))
+saveRDS(genes_filtered_test_v2, file.path(data_path, 'processed_data/genes_filtered_karyo_mut_status_full_filt_ccf_08.rds'))

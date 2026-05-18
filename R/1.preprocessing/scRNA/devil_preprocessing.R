@@ -4,14 +4,15 @@ library(tidyverse)
 library(SingleCellExperiment)
 library(Matrix)
 library(readxl)
+library(Seurat)
 
 setwd('/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj')
 
-data_path = 'data/scRNA'
+# data_path = 'data/scRNA'
+data_path = 'data/scRNA/reanalysis/sce_new'
 list.files(data_path)
 
-
-dict = readRDS('data/full_dict_dna_rna_prot.rds')
+dict = readRDS('data/utilities/full_dict_dna_rna_prot.rds')
 
 # genes_karyo = readRDS('/orfeo/scratch/cdslab/vgazziero/organoids_prj/data/karyotypes_all_genes_qc_v3.rds')
 # genes_karyo_muts = readRDS('data/karyotypes_mutations_all_genes_qc_ccf_v4.rds')
@@ -19,24 +20,27 @@ dict = readRDS('data/full_dict_dna_rna_prot.rds')
 #   mutate(karyotype = gsub(' ', '', karyotype))
 
 # loading table filtered by ccf 
-genes_karyo_muts = readRDS('data/processed_data/genes_filtered_karyo_mut_status_filt_ccf_08.rds')
+genes_karyo_muts = readRDS('data/processed_data/dna/genes_filtered_karyo_mut_status_filt_ccf_08.rds')
 genes_karyo_muts = genes_karyo_muts %>% 
   filter(sample != '11')
 
 # genes_karyo_muts = readRDS('data/genes_cna_mut_status_filtered.rds')
 
 # excluding pdo11 from the analysis
-sc_samples = grep('Sample_PDO11_filtered', 
+sc_samples = grep('PDO11_S10.rds', 
                   list.files(data_path, full.names = T), 
                   value =T, 
                   invert = T)
 
-sc_samples = c('data/scRNA/I10_1_013_4164_1046BL_S13_filtered.rds', 'data/scRNA/Sample_PDO63_filtered.rds')
+# sc_samples = c('data/scRNA/reanalysis/sce_new/I09_1_001_1014BL_S1.rds', 'data/scRNA/Sample_PDO63_filtered.rds')
 
 data = lapply(sc_samples, function(p) {
   
   x = readRDS(p)
-  sample = x$sample %>% unique
+  sample = x$batch %>% unique
+  if(str_detect(sample, "^PDO")) {
+    sample = str_remove(sample, "_S\\d+$")  
+  }
   
   # x = x@assays$RNA$counts
   # x = as.matrix(x)
@@ -68,7 +72,10 @@ data = lapply(sc_samples, function(p) {
       
       # change the cell ids 
       print(sample)
-      renamed = RenameCells(x[['RNA']], new.names = paste(genomic_sample, colnames(x), sep = '_'))
+      renamed = x
+      colnames(renamed) = paste(genomic_sample, colnames(renamed), sep = '_')
+      
+      # renamed = RenameCells(x[['X']], new.names = paste(genomic_sample, colnames(x), sep = '_'))
       # 
       # x = x %>% 
       #   as.data.frame %>% 
@@ -80,9 +87,14 @@ data = lapply(sc_samples, function(p) {
 
 data = Filter(Negate(is.null), data)
 
-common_genes = Reduce('intersect', lapply(data, function(x) {x$data@counts %>% rownames}))
+common_genes = Reduce('intersect', lapply(data, function(x) {rownames(x$data)}))
 counts_all_common_genes = lapply(data, function(x) {subset(x$data, features = common_genes)})
-counts = merge(counts_all_common_genes[[1]], counts_all_common_genes[2:length(counts_all_common_genes)])
+# counts = merge(counts_all_common_genes[[1]], counts_all_common_genes[2:length(counts_all_common_genes)])
+
+counts = do.call(
+  cbind,
+  counts_all_common_genes
+)
 # 
 # saveRDS(counts, 'data/scexp_karyo_all_pdo_counts_filtered.rds')
 # counts = readRDS('data/scexp_karyo_all_pdo_counts_filtered.rds')
@@ -104,21 +116,22 @@ metadata <- metadata %>%
 metadata = metadata %>%
   tibble::column_to_rownames('cell_id')
 
-mapping_ICR_names <- read_excel("data/mapping_ICR_names.xlsx")
+mapping_ICR_names <- read_excel("data/utilities/mapping_ICR_names.xlsx")
 
 metadata = metadata %>% 
   dplyr::mutate(batch = case_when(
     sample_id %in% mapping_ICR_names$fixed_name ~ 'ICR', 
     .default = 'HSR')
   )
-saveRDS(metadata, 'data/new_metadata_sc.rds')
+saveRDS(metadata, 'data/scRNA/new_metadata_sc.rds')
 
-counts_sc = counts$counts
-counts_sc = counts_sc[,rownames(metadata)]
-dim(counts_sc) 
 
-scexp = SingleCellExperiment(list(counts = counts_sc), colData = metadata)
-saveRDS(scexp, 'data/scexp_karyo_all_organoids_filt.rds')
+# counts_sc = counts$counts
+# counts_sc = counts_sc[,rownames(metadata)]
+# dim(counts_sc) 
+
+scexp = SingleCellExperiment(list(counts = assay(counts)), colData = metadata)
+saveRDS(scexp, 'data/processed_data/scexp_karyo_all_organoids_filt.rds')
 
 samples = metadata$sample_id %>% unique
 karyo = genes_karyo_muts %>% 
@@ -131,50 +144,50 @@ karyo = genes_karyo_muts %>%
   ))
 saveRDS(karyo, 'data/karyotypes_genes_filtered_scrna.rds')
 
-# adding mutation state
-karyo = readRDS('data/karyotypes_genes_filtered_scrna.rds')
-metadata = readRDS('data/new_metadata_sc.rds')
-
-
-
-# counts = data %>% 
-#   do.call('full_join', .)
-
-
-expr = setNames(nm = data$cell_id, object = data$smad2_expr)
-metadata = data %>% 
-  select(-smad2_expr)
-
-saveRDS(expr, 'data/smad2_scRNA_expression.rds')
-saveRDS(metadata, 'data/smad2_metadata.rds')
-
-# single_geme
-
-gene = "SMAD2"
-
-dg = data %>% dplyr::filter(hgnc_symbol == gene)
-meta = data %>% 
-  filter(hgnc_symbol == gene) %>% 
-  dplyr::select(sample, karyotype) %>%  
-  distinct() %>% 
-  mutate(karyotype = factor(karyotype, levels =  c("1:1", "1:0", "2:0", "2:1")))
-
-
-Y = data %>% 
-  filter(sample %in% meta$sample) %>% 
-  dplyr::select(expr, hgnc_symbol, sample) %>% 
-  distinct() %>% 
-  tidyr::pivot_wider(values_from = expr, names_from = hgnc_symbol, values_fill = 0) %>% 
-  tibble::column_to_rownames('sample') %>% 
-  as.matrix()
-
-dds = DESeqDataSetFromMatrix(countData = t(Y), colData = meta, design = ~karyotype)
-dds = DESeq(dds)
-
-res = results(dds)
-hist(res$pvalue)
-
-
-
-
-
+# # adding mutation state
+# karyo = readRDS('data/karyotypes_genes_filtered_scrna.rds')
+# metadata = readRDS('data/new_metadata_sc.rds')
+# 
+# 
+# 
+# # counts = data %>% 
+# #   do.call('full_join', .)
+# 
+# 
+# expr = setNames(nm = data$cell_id, object = data$smad2_expr)
+# metadata = data %>% 
+#   select(-smad2_expr)
+# 
+# saveRDS(expr, 'data/smad2_scRNA_expression.rds')
+# saveRDS(metadata, 'data/smad2_metadata.rds')
+# 
+# # single_geme
+# 
+# gene = "SMAD2"
+# 
+# dg = data %>% dplyr::filter(hgnc_symbol == gene)
+# meta = data %>% 
+#   filter(hgnc_symbol == gene) %>% 
+#   dplyr::select(sample, karyotype) %>%  
+#   distinct() %>% 
+#   mutate(karyotype = factor(karyotype, levels =  c("1:1", "1:0", "2:0", "2:1")))
+# 
+# 
+# Y = data %>% 
+#   filter(sample %in% meta$sample) %>% 
+#   dplyr::select(expr, hgnc_symbol, sample) %>% 
+#   distinct() %>% 
+#   tidyr::pivot_wider(values_from = expr, names_from = hgnc_symbol, values_fill = 0) %>% 
+#   tibble::column_to_rownames('sample') %>% 
+#   as.matrix()
+# 
+# dds = DESeqDataSetFromMatrix(countData = t(Y), colData = meta, design = ~karyotype)
+# dds = DESeq(dds)
+# 
+# res = results(dds)
+# hist(res$pvalue)
+# 
+# 
+# 
+# 
+# 

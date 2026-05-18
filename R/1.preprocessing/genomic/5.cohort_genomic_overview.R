@@ -5,7 +5,8 @@ library(CNAqc)
 rm(list=ls())
 
 setwd('/orfeo/scratch/cdslab/vgazziero/organoids_prj')
-cnas = readRDS('data/cnaqc_v2/cnas_list_v2.rds')
+source('organoids_analysis/R/functions_utils/constants.R')
+cnas = readRDS(file.path(data_path, 'cnaqc_v2/cnas_list_v2.rds'))
 
 sequenced = 3.1e9
 
