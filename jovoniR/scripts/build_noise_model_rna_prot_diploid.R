@@ -3,26 +3,37 @@ rm(list = ls())
 library(tidyverse)
 
 # ── Paths ──────────────────────────────────────────────────────────────────
-PROT_BOOT_PATH <- "/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj/data/noise_model/protein/fc_tb_clean.rds"
+PROT_BOOT_PATH <- "/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj/data/noise_model/protein/dep_diploid_genes_results.rds"
 RNA_BOOT_PATH  <- "/orfeo/cephfs/scratch/cdslab/gsantacatterina/organoids_analysis/jovoniR/results/RNA/diploid_bootstrap.rds"
 OUT_PATH       <- "/orfeo/cephfs/scratch/cdslab/gsantacatterina/organoids_analysis/jovoniR/results/multiOmic/diploid_noise.RDS"
 IMG_PATH       <- "/orfeo/cephfs/scratch/cdslab/gsantacatterina/organoids_analysis/jovoniR/img/"
 
 # ── Load bootstrap data ────────────────────────────────────────────────────
 rna_df <- readRDS(RNA_BOOT_PATH) %>%
-  dplyr::filter(min_mean_expr > 0.05, non_zero_percent > 1, n_samples > 5) %>%
+  dplyr::filter(min_mean_expr > 0.1, non_zero_percent > 1, n_samples > 12) %>%
   dplyr::select(gene, iteration, lfc) %>%
   dplyr::rename(lfc_rna = lfc)
 
 prot_df <- readRDS(PROT_BOOT_PATH) %>%
-  dplyr::select(PG.Genes, iteration, B_vs_A_diff) %>%
-  dplyr::rename(gene = PG.Genes, lfc_prot = B_vs_A_diff) %>%
+  dplyr::select(gene, iteration, lfc) %>%
+  dplyr::rename(lfc_prot = lfc) %>%
   na.omit()
+
+length(unique(rna_df$gene))
+length(unique(prot_df$gene))
+
+sum(unique(rna_df$gene) %in% unique(prot_df$gene))
+
+unique(prot_df$gene)[!unique(prot_df$gene) %in% unique(rna_df$gene)]
 
 # Matched pairs for the buffering null: CS_Buffering = RNA_lfc - Protein_lfc
 # requires draws from the same gene × iteration.
 df_matched <- dplyr::inner_join(rna_df, prot_df, by = c("gene", "iteration")) %>%
   dplyr::mutate(lfc_buff = lfc_rna - lfc_prot)
+
+plot(df_matched$lfc_rna, df_matched$lfc_prot)
+
+hist(df_matched$lfc_buff)
 
 # ── Fit noise models ───────────────────────────────────────────────────────
 # A new observation x is tested as: z = (x - mu) / sigma, p = 2*pnorm(-|z|).

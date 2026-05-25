@@ -228,8 +228,7 @@ asym_plot <- dir_asymmetry %>%
     )
   )
 
-p_asymmetry <- ggplot(asym_plot,
-                      aes(x = karyotype_lab, y = asymmetry, fill = omic)) +
+p_asymmetry <- ggplot(asym_plot, aes(x = karyotype_lab, y = asymmetry, fill = omic)) +
   geom_col(position = position_dodge(width = 0.8), width = 0.7) +
   geom_text(aes(label = sig_label,
                 y = asymmetry + sign(asymmetry) * 0.04),

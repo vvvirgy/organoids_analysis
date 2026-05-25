@@ -15,6 +15,8 @@ input_data = filter_sce_v2(sce, min_counts_floor = 2000)
 rm(sce)
 gc()
 
+
+
 karyotypes_df_all = readRDS(META_PATH)
 
 names(diploid_gene_list)
@@ -89,7 +91,7 @@ df_gene_boot_all <- lapply(genes, function(gene) {
   unique_iters = unique(iterations_df$iteration) %>% sort()
   K = 20
   first_K_iters = unique_iters[1:min(K, length(unique_iters))]
-  iters = first_20_iters
+  iters = first_K_iters
   
   cell_id_to_sample_df = dplyr::tibble(sample = input_data$meta$sample_id, cell_id = rownames(input_data$meta))
   

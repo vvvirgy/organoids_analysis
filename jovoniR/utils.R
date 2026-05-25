@@ -1,330 +1,135 @@
 
 #SCE_PATH = "/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj/data/scexp_smad2_karyo_all_organoids.rds"
-SCE_PATH = "/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj/data/scexp_karyo_all_organoids_filt.rds"
+SCE_PATH = "/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj/data/processed_data/scRNA/scexp_karyo_all_organoids_filt.rds"
 META_PATH = "/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj/data/karyotypes_genes_filtered_scrna.rds"
 
-my_fit_devil <- function(
-    input_matrix,
-    design_matrix,
-    overdispersion = "MOM",
-    init_overdispersion = NULL,
-    init_beta_rough = FALSE,offset = 0,
-    size_factors = NULL,
-    verbose = FALSE,
-    max_iter = 200,
-    tolerance = 1e-3,
-    CUDA = FALSE,
-    batch_size = 1024L,
-    parallel.cores = 1
-) {
-  # - Input parameters ----
-  # Read general info about input matrix and design matrix
-  gene_names <- rownames(input_matrix)
-  ngenes <- nrow(input_matrix)
-  nfeatures <- ncol(design_matrix)
+filter_sce = function(sce) {
+  meta = sce@colData
+  counts = sce@assays@data$counts
   
-  # Detect cores to use
-  max.cores <- parallel::detectCores()
-  if (is.null(parallel.cores)) {
-    n.cores <- max.cores
-  } else {
-    if (parallel.cores > max.cores) {
-      message("Requested ", parallel.cores, " cores, but only ", max.cores, " available.")
-    }
-    n.cores <- min(max.cores, parallel.cores)
-  }
+  total_counts <- colSums(counts)
+  total_features <- colSums(counts > 0)
   
-  # Check if CUDA is available
-  CUDA_is_available <- FALSE
-  if (CUDA) {
-    if (!exists("beta_fit_gpu", mode = "function")) {
-      warning(
-        "CUDA support was not enabled during package installation. ",
-        "The beta_fit_gpu function is not available. ",
-        "Reinstall with configure.args='--with-cuda' to enable GPU acceleration: ",
-        "devtools::install_github(\"caravagnalab/devil\", force=TRUE, configure.args=\"--with-cuda\"). ",
-        "Falling back to CPU computation."
-      )
-      CUDA <- FALSE
-      CUDA_is_available <- FALSE
-    } else {
-      message("CUDA support detected - using GPU acceleration")
-      CUDA_is_available <- TRUE
-    }
-  }
+  mad5_filter <- total_counts > median(total_counts) + 5 * mad(total_counts)
+  feat100_filter <- total_features < 100
   
-  # - CPU and GPU common part (i.e. size_factors and offset_vectors) ----
-  ## - Compute size factors ----
-  if (!is.null(size_factors)) {
-    
-    
-    if (class(size_factors) == "character") {
-      if (verbose) {
-        message("Compute size factors")
-      }
-      sf <- devil:::calculate_sf(input_matrix, method = size_factors, verbose = verbose)  
-    } else {
-      if (verbose) {
-        message("Using pre-computed size factors")
-      }
-      sf <- size_factors
-    }
-  } else {
-    sf <- rep(1, nrow(design_matrix))
-  }
+  mitocondrial_genes <- grepl("^MT-", rownames(counts))
+  mitocondiral_prop <- colSums(counts[mitocondrial_genes, ]) / colSums(counts)
+  mit_prop_filter <- mitocondiral_prop > .2
+  cell_outliers_filter <- mad5_filter | feat100_filter | mit_prop_filter
   
-  ## - Compute offset vector ----
-  offset_vector <- devil:::compute_offset_vector(offset, input_matrix, sf)
+  counts = as.matrix(counts)
+  counts <- counts[, !cell_outliers_filter]
+  meta <- meta[!cell_outliers_filter, ]
   
-  # - Start GPU vs CPU branch ----
-  if (CUDA & CUDA_is_available) {
-    
-    ## - GPU branch ----
-    remainder <- ngenes %% batch_size
-    extra_genes <- remainder
-    genes_batch <- ngenes - extra_genes
-    
-    message("Fit beta, using CUDA acceleration")
-    start_time <- Sys.time()
-    res_beta_fit <- beta_fit_gpu(
-      input_matrix[seq_len(genes_batch), ],
-      design_matrix,
-      offset_vector,
-      max_iter = max_iter,
-      eps = tolerance,
-      batch_size = batch_size,
-      TEST = FALSE
-    )
-    
-    if (remainder > 0) {
-      res_beta_fit_extra <- beta_fit_gpu(
-        input_matrix[(genes_batch + 1):ngenes, ],
-        design_matrix,
-        offset_vector,
-        max_iter = max_iter,
-        eps = tolerance,
-        batch_size = extra_genes,
-        TEST = FALSE
-      )
-    }
-    
-    end_time <- Sys.time()
-    message("[TIMING] Beta fit computing (GPU):", difftime(end_time, start_time, units = "secs"))
-    
-    # Extract beta and theta from GPU results
-    beta <- res_beta_fit$mu_beta
-    theta <- res_beta_fit$theta
-    
-    # gpu_k <- NULL
-    # gpu_beta_init <- NULL
-    
-    if (remainder > 0) {
-      beta_extra <- res_beta_fit_extra$mu_beta
-      theta_extra <- res_beta_fit_extra$theta
-      beta <- rbind(beta, beta_extra)
-      theta <- c(theta, theta_extra)
-      beta_iters <- c(res_beta_fit$iter, res_beta_fit_extra$iter)
-    } else {
-      beta_iters <- c(res_beta_fit$iter)
-    }
-    
-    if (is.null(dim(beta))) {
-      beta <- matrix(beta, ncol = 1)
-    }
-    
-    rownames(beta) <- gene_names
-    
-    # Create fit_res structure to match CPU branch
-    fit_res <- list(
-      beta = beta,
-      theta = theta,
-      iterations = list(
-        beta_iters = beta_iters,
-        theta_iters = 0L # GPU uses MOM, no iterative fitting
-      )
-    )
-    
-  } else {
-    ## - CPU branch ----
-    fit_res <- devil:::cpu_fit(
-      input_matrix = input_matrix,
-      design_matrix = design_matrix,
-      offset_vector = offset_vector,
-      init_overdispersion = init_overdispersion,
-      init_beta_rough = init_beta_rough,
-      overdispersion = overdispersion,
-      n.cores = n.cores, max_iter = max_iter,
-      tolerance = tolerance, verbose = verbose
-    )
-  }
+  non_expressed_genes <- rowMeans(counts) <= 0.01
+  counts <- counts[!non_expressed_genes, ]
+  counts <- counts[,colnames(counts) %in% rownames(meta)]
   
-  return(list(
-    beta = fit_res$beta,
-    overdispersion = fit_res$theta,
-    iterations = fit_res$iterations,
-    size_factors = sf,
-    offset_vector = offset_vector,
-    design_matrix = design_matrix,
-    input_matrix = input_matrix,
-    input_parameters = list(max_iter = max_iter, tolerance = tolerance, parallel.cores = n.cores)
-  ))
+  list(counts = counts, meta = meta)
 }
 
-my_test_de = function (devil.fit, contrast, pval_adjust_method = "BH", max_lfc = 10, 
-                       clusters = NULL, parallel.cores = 1) {
-  max.cores <- parallel::detectCores()
-  if (is.null(parallel.cores)) {
-    n.cores <- max.cores
-  } else {
-    if (parallel.cores > max.cores) {
-      message("Requested ", parallel.cores, " cores, but only ", max.cores, " available.")
-    }
-    n.cores <- min(max.cores, parallel.cores)
-  }
+filter_sce_v2 = function(sce, 
+                         min_counts_floor = 500,
+                         min_features = 200,
+                         mad_high = 10,
+                         mad_low = 2,
+                         mito_threshold = 0.2,
+                         min_gene_mean = 0.01) {
+  meta = sce@colData
+  counts = sce@assays@data$counts
   
-  ngenes   <- nrow(devil.fit$input_matrix)
-  nsamples <- nrow(devil.fit$design_matrix)
-  contrast <- as.array(contrast)
+  # Per-cell QC metrics
+  total_counts <- colSums(counts)
+  total_features <- colSums(counts > 0)
+  mitochondrial_genes <- grepl("^MT-", rownames(counts))
+  mito_prop <- colSums(counts[mitochondrial_genes, ]) / total_counts
   
-  lfcs <- (devil.fit$beta %*% contrast) %>% unlist() %>% unname() %>% c()
+  # Per-sample MAD-based filters on log10(counts)
+  log_counts <- log10(total_counts + 1)
+  sample_ids <- meta$sample_id
   
-  if (!is.null(clusters) & !is.numeric(clusters)) {
-    message("Converting clusters to numeric factors")
-    clusters <- as.numeric(as.factor(clusters))
-  }
+  qc_df <- tibble(
+    cell = colnames(counts),
+    sample_id = sample_ids,
+    total_counts = total_counts,
+    total_features = total_features,
+    log_counts = log_counts,
+    mito_prop = mito_prop
+  ) %>%
+    group_by(sample_id) %>%
+    mutate(
+      med_log = median(log_counts),
+      mad_log = mad(log_counts),
+      high_count = log_counts > med_log + mad_high * mad_log,
+      low_count  = log_counts < med_log - mad_low  * mad_log
+    ) %>%
+    ungroup()
   
-  out_list <- parallel::mclapply(seq_len(nrow(devil.fit$input_matrix)), function(gene_idx) {
-    mu_test <- lfcs[gene_idx]  # natural-log scale
+  # Absolute thresholds (applied globally, not per-sample)
+  absolute_low_count   <- total_counts < min_counts_floor
+  low_feature_filter   <- total_features < min_features
+  high_mito_filter     <- mito_prop > mito_threshold
+  
+  # Combine all cell-level filters
+  cell_outliers_filter <- qc_df$high_count | qc_df$low_count |
+    absolute_low_count | low_feature_filter |
+    high_mito_filter
+  
+  # Report what's being removed
+  cat("Cells removed by filter:\n")
+  cat(sprintf("  High count (per-sample MAD): %d\n", sum(qc_df$high_count)))
+  cat(sprintf("  Low count  (per-sample MAD): %d\n", sum(qc_df$low_count)))
+  cat(sprintf("  Below absolute count floor:  %d\n", sum(absolute_low_count)))
+  cat(sprintf("  Below feature floor:         %d\n", sum(low_feature_filter)))
+  cat(sprintf("  High mito proportion:        %d\n", sum(high_mito_filter)))
+  cat(sprintf("  Total cells removed:         %d / %d (%.1f%%)\n",
+              sum(cell_outliers_filter), length(cell_outliers_filter),
+              100 * mean(cell_outliers_filter)))
+  
+  # Apply cell filter
+  counts <- as.matrix(counts)
+  counts <- counts[, !cell_outliers_filter]
+  meta   <- meta[!cell_outliers_filter, ]
+  
+  # Gene-level filter
+  non_expressed_genes <- rowMeans(counts) <= min_gene_mean
+  counts <- counts[!non_expressed_genes, ]
+  cat(sprintf("Genes removed (mean <= %g): %d / %d\n",
+              min_gene_mean, sum(non_expressed_genes), length(non_expressed_genes)))
+  
+  # Ensure alignment
+  counts <- counts[, colnames(counts) %in% rownames(meta)]
+  
+  list(counts = counts, meta = meta)
+}
+
+compare_omics_boot <- function(sub_df, n_genes = 500, n_boot = 1000) {
+  
+  rna_labels <- sub_df$CS_class[sub_df$omic == "RNA"]
+  prot_labels <- sub_df$CS_class[sub_df$omic == "Protein"]
+  
+  if(length(rna_labels) == 0 | length(prot_labels) == 0) return(NULL)
+  
+  boot_results <- replicate(n_boot, {
     
-    # Cluster-robust (if clusters provided)
-    H <- devil:::compute_sandwich(
-      devil.fit$design_matrix,
-      devil.fit$input_matrix[gene_idx, ],
-      devil.fit$beta[gene_idx, ],
-      devil.fit$overdispersion[gene_idx],
-      devil.fit$size_factors,
-      clusters
-    )
-    var1 <- as.numeric(t(contrast) %*% H %*% contrast)
-    se1  <- sqrt(var1)
-    p1   <- 2 * stats::pt(abs(mu_test) / se1, df = nsamples - 2, lower.tail = FALSE)
+    s_rna  <- sample(rna_labels, size = n_genes, replace = (length(rna_labels) < n_genes))
+    s_prot <- sample(prot_labels, size = n_genes, replace = (length(prot_labels) < n_genes))
     
-    if (!is.null(clusters)) {
-      # "Null" (non-clustered) as in your original code
-      Hnull <- devil:::compute_sandwich(
-        devil.fit$design_matrix,
-        devil.fit$input_matrix[gene_idx, ],
-        devil.fit$beta[gene_idx, ],
-        devil.fit$overdispersion[gene_idx],
-        devil.fit$size_factors,
-        NULL
-      )
-      var0 <- as.numeric(t(contrast) %*% Hnull %*% contrast)
-      se0  <- sqrt(var0)
-      p0   <- 2 * stats::pt(abs(mu_test) / se0, df = nsamples - 2, lower.tail = FALSE)
-      
-      # Keep your conservative p-value rule, and report matching SE
-      if (p0 >= p1) {
-        p_final  <- p0
-        se_final <- se0
-      } else {
-        p_final  <- p1
-        se_final <- se1
-      }
-    } else {
-      p_final  <- p1
-      se_final <- se1
-    }
+    f_rna  <- sum(s_rna == "CS>0") / n_genes
+    f_prot <- sum(s_prot == "CS>0") / n_genes
     
-    c(pval = p_final, se = se_final)
-  }, mc.cores = n.cores)
+    c(f_rna = f_rna, f_prot = f_prot, diff = f_prot - f_rna)
+    
+  }) %>% t() %>% as.data.frame()
   
-  out_mat  <- do.call(rbind, out_list)
-  p_values <- out_mat[, "pval"]
-  se_mu    <- out_mat[, "se"]          # SE on natural-log scale
-  se_lfc   <- se_mu / log(2)           # SE on log2 fold-change scale
+  p_val <- sum(boot_results$diff <= 0) / n_boot
   
-  result_df <- dplyr::tibble(
-    name     = rownames(devil.fit$beta),
-    pval     = as.numeric(p_values),
-    adj_pval = stats::p.adjust(as.numeric(p_values), method = pval_adjust_method),
-    lfc      = lfcs / log(2),
-    se_lfc   = as.numeric(se_lfc)
-    # optionally also return se on natural-log scale:
-    # se      = as.numeric(se_mu)
+  data.frame(
+    omic = c("RNA", "Protein"),
+    f_mean = c(mean(boot_results$f_rna), mean(boot_results$f_prot)),
+    low = c(quantile(boot_results$f_rna, 0.025), quantile(boot_results$f_prot, 0.025)),
+    high = c(quantile(boot_results$f_rna, 0.975), quantile(boot_results$f_prot, 0.975)),
+    p_prot_gt_rna = p_val
   )
-  
-  result_df <- result_df %>%
-    dplyr::mutate(lfc = ifelse(.data$lfc >= max_lfc,  max_lfc,  .data$lfc)) %>%
-    dplyr::mutate(lfc = ifelse(.data$lfc <= -max_lfc, -max_lfc, .data$lfc))
-  
-  df <- nsamples - 2
-  tcrit <- stats::qt(0.975, df = df)
-  result_df <- result_df %>%
-    dplyr::mutate(
-      ci_low  = .data$lfc - tcrit * .data$se_lfc,
-      ci_high = .data$lfc + tcrit * .data$se_lfc
-    )
-  
-  return(result_df)
-}
-
-estimate_mom_dispersion <- function(count_matrix,
-                                    design_matrix,
-                                    beta_matrix,
-                                    sf) {
-  
-  G <- nrow(count_matrix)   # genes
-  n <- ncol(count_matrix)   # cells
-  n_design <- nrow(design_matrix)
-  p <- ncol(design_matrix)
-  
-  if (n_design != n)
-    stop("design_matrix must have nrow == ncol(count_matrix)")
-  
-  if (nrow(beta_matrix) != G)
-    stop("beta_matrix must have nrow == nrow(count_matrix)")
-  
-  if (ncol(beta_matrix) != p)
-    stop("beta_matrix must have ncol == ncol(design_matrix)")
-  
-  if (length(sf) != n)
-    stop("sf must have length ncol(count_matrix)")
-  
-  corr <- n / (n - p)
-  
-  theta <- numeric(G)
-  
-  for (g in seq_len(G)) {
-    num <- 0
-    den <- 0
-    for (j in seq_len(n)) {
-      
-      # linear predictor
-      eta <- sum(design_matrix[j, ] * beta_matrix[g, ])
-      
-      mu   <- sf[j] * exp(eta)
-      y    <- count_matrix[g, j]
-      diff <- y - mu
-      
-      num <- num + (diff^2 - mu)
-      
-      if (is.na(num)) {
-        print(j)
-        stop()
-      }
-        
-      den <- den + mu^2
-    }
-    
-    th <- 0
-    if (den > 0) {
-      th <- corr * num / den
-      if (th < 0) th <- 0  # truncate to non-negative
-    }
-    
-    theta[g] <- th
-  }
-  
-  return(theta)
 }

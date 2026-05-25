@@ -12,4 +12,4 @@ source ~/.bashrc
 conda activate process
 
 # 2. Run the R script
-Rscript fit_DNA.R
+Rscript /orfeo/cephfs/scratch/cdslab/gsantacatterina/organoids_analysis/jovoniR/scripts/fit_DNA.R
