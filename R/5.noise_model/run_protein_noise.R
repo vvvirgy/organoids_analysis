@@ -1,5 +1,5 @@
-rm(list=ls())
 
+rm(list=ls())
 library(tidyverse)
 library(DEP)
 
@@ -19,9 +19,9 @@ dir.create(RES_PATH, recursive = T)
 # genes_cna_status = readRDS(file.path(data_path, 'processed_data/dna/genes_filtered_karyo_mut_status_filt_ccf_08.rds'))
 
 # get correct sample names
-dict = readRDS(file.path(data_path, 'full_dict_dna_rna_prot.rds'))
+dict = readRDS(file.path(data_path, 'utilities/full_dict_dna_rna_prot.rds'))
 
-design_matrix = readRDS(file.path(RES_PATH, 'filtered_design_matrix.rds'))
+design_matrix = readRDS(file.path(RES_PATH, 'filtered_design_matrix_diploids.rds'))
 
 # get the pair proteomics-genomics correct sample name
 samples_check = dict %>% 
@@ -61,10 +61,10 @@ data = data %>%
 
 
 # selecting only some genes to run the dge --> removing genes without or with low number of diploids
-tetraploid_genes = names(design_matrix)
+diploid_genes = names(design_matrix)
 
 
-dep_by_karyotype = parallel::mclapply(tetraploid_genes, function(g) {
+dep_by_karyotype = parallel::mclapply(diploid_genes, function(g) {
 
     message(g)
     des = design_matrix[[g]] %>% 
@@ -74,7 +74,7 @@ dep_by_karyotype = parallel::mclapply(tetraploid_genes, function(g) {
     iterations = des$iteration %>% unique
     
     # run for n iterations 
-    res = lapply(iterations, function(i) {
+    res = lapply(as.numeric(na.omit(iterations[1:20])), function(i) {
       
       message(i)
       
@@ -127,7 +127,7 @@ names(dep_by_karyotype) = lapply(dep_by_karyotype, function(x) x$gene) %>% unlis
 
 # dir.create(file.path(data_path, 'noise_model/protein'), recursive = T)
 
-saveRDS(dep_by_karyotype, file.path(data_path, 'noise_model/protein/dep_tetraploid_genes_results.rds'))
+saveRDS(dep_by_karyotype, file.path(data_path, 'noise_model/protein/dep_diploid_genes_results.rds'))
 
 
 

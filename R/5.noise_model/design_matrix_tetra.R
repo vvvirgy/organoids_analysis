@@ -1,10 +1,5 @@
 library(tidyverse)
-library(googlesheets4)
 library(dplyr)
-library(boot)
-library(clusterProfiler)
-library(org.Hs.eg.db)
-library(patchwork)
 
 setwd('/orfeo/cephfs/scratch/cdslab/vgazziero/organoids_prj')
 
@@ -33,18 +28,20 @@ genes_cna_status = readRDS(file.path(data_path, 'processed_data/dna/genes_filter
 
 # selecting only some genes to run the dge --> removing genes without or with low number of diploids
 
-tetraploid_genes = genes_cna_status %>% 
-  filter(karyotype %in% '2:2') %>% 
+diploid_genes = genes_cna_status %>% 
+  filter(karyotype %in% '1:1') %>% 
   group_by(hgnc_symbol) %>% 
   dplyr::count() %>% 
   filter(n >= 5) %>% 
   pull(hgnc_symbol) %>% 
   unique 
 
-design_matrix_samples_groups = make_groups(genes_cna_status, tetraploid_genes, karyo = '2:2', n = 100)
-saveRDS(design_matrix_samples_groups, file.path(RES_PATH, 'design_matrix.rds'))
+design_matrix_samples_groups = make_groups(genes_cna_status, diploid_genes, karyo = '1:1', n = 100)
+saveRDS(design_matrix_samples_groups, file.path(RES_PATH, 'design_matrix_diploid.rds'))
 
-filtered_design_matrix = lapply(design_matrix, function(df) {
+design_matrix_samples_groups = readRDS(file.path(RES_PATH, 'design_matrix_diploid.rds'))
+
+filtered_design_matrix = lapply(design_matrix_samples_groups, function(df) {
   good_iters = df %>%
     dplyr::mutate(sample_group = paste0(sample, ":", group)) %>%
     dplyr::group_by(iteration) %>%
@@ -56,5 +53,5 @@ filtered_design_matrix = lapply(design_matrix, function(df) {
   df %>% dplyr::filter(iteration %in% good_iters)
 })
 
-names(filtered_design_matrix) = names(design_matrix)
-saveRDS(filtered_design_matrix, file.path(RES_PATH, 'filtered_design_matrix.rds'))
+# names(filtered_design_matrix) = names(design_matrix)
+saveRDS(filtered_design_matrix, file.path(RES_PATH, 'filtered_design_matrix_diploids.rds'))
