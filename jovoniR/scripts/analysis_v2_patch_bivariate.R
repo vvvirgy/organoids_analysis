@@ -35,16 +35,25 @@ use_stable <- ifelse(length(args) >= 2, as.logical(args[2]), FALSE)
 cat(paste0("Running with sf_method: ", sf_method, " | use_stable: ", use_stable, "\n"))
 
 rm(list = setdiff(ls(), c("sf_method", "use_stable")))
-source("/orfeo/cephfs/scratch/cdslab/gsantacatterina/organoids_analysis/jovoniR/utils.R")
-source("/orfeo/cephfs/scratch/cdslab/gsantacatterina/organoids_analysis/jovoniR/scripts/constants.R")
-source("/orfeo/cephfs/scratch/cdslab/gsantacatterina/organoids_analysis/jovoniR/scripts/getters.R")
+# source("/orfeo/cephfs/scratch/cdslab/gsantacatterina/organoids_analysis/jovoniR/utils.R")
+# source("/orfeo/cephfs/scratch/cdslab/gsantacatterina/organoids_analysis/jovoniR/scripts/constants.R")
+# source("/orfeo/cephfs/scratch/cdslab/gsantacatterina/organoids_analysis/jovoniR/scripts/getters.R")
+# IMG_PATH <- paste0("/orfeo/cephfs/scratch/cdslab/gsantacatterina/organoids_analysis/jovoniR/img/sf_", sf_method, "_stable_", use_stable, "_biv")
+# RES_PATH <- paste0("/orfeo/cephfs/scratch/cdslab/gsantacatterina/organoids_analysis/jovoniR/results/sf_", sf_method, "_stable_", use_stable, "_biv")
+# DF_DNA_PATH = "/orfeo/cephfs/scratch/cdslab/gsantacatterina/organoids_analysis/jovoniR/results/DNA_lfc.rds"
+# DF_CS_SCORES_PATH = "/orfeo/cephfs/scratch/cdslab/gsantacatterina/organoids_analysis/jovoniR/results/multiOmic/CS_scores_prot_and_rna.rds"
+# NOISE_MODEL_PATH = "/orfeo/cephfs/scratch/cdslab/gsantacatterina/organoids_analysis/jovoniR/results/multiOmic/diploid_noise_bivariate.RDS"
 
-IMG_PATH <- paste0("/orfeo/cephfs/scratch/cdslab/gsantacatterina/organoids_analysis/jovoniR/img/sf_", sf_method, "_stable_", use_stable, "_biv")
-RES_PATH <- paste0("/orfeo/cephfs/scratch/cdslab/gsantacatterina/organoids_analysis/jovoniR/results/sf_", sf_method, "_stable_", use_stable, "_biv")
-
+source("utils.R")
+source("scripts/constants.R")
+source("scripts/getters.R")
+IMG_PATH <- paste0("img/sf_", sf_method, "_stable_", use_stable, "_biv")
+RES_PATH <- paste0("results/sf_", sf_method, "_stable_", use_stable, "_biv")
+DF_DNA_PATH = "results/DNA_lfc.rds"
+DF_CS_SCORES_PATH = "results/multiOmic/CS_scores_prot_and_rna.rds"
+NOISE_MODEL_PATH = "results/multiOmic/diploid_noise_bivariate.RDS"
 
 dir.create(IMG_PATH, recursive = TRUE, showWarnings = FALSE)
-
 dir.create(RES_PATH, recursive = TRUE, showWarnings = FALSE)
 
 ALPHA <- 0.05
@@ -54,13 +63,13 @@ MIN_N_PER_GROUP <- 4   # per-karyotype minimum sample size filter
 # 1. Load data and BIVARIATE noise model
 # ===========================================================================
 
-df_dna <- readRDS("/orfeo/cephfs/scratch/cdslab/gsantacatterina/organoids_analysis/jovoniR/results/DNA_lfc.rds") %>%
+df_dna <- readRDS(DF_DNA_PATH) %>%
   dplyr::rename(DNA_lfc = lfc)
 
-df_raw <- readRDS("/orfeo/cephfs/scratch/cdslab/gsantacatterina/organoids_analysis/jovoniR/results/multiOmic/CS_scores_prot_and_rna.rds")
+df_raw <- readRDS(DF_CS_SCORES_PATH)
 
 # Bivariate null: list(mu, Sigma, Sigma_inv, rho, cond_PgivenR, n)
-noise_biv <- readRDS("/orfeo/cephfs/scratch/cdslab/gsantacatterina/organoids_analysis/jovoniR/results/multiOmic/diploid_noise_bivariate.RDS")
+noise_biv <- readRDS(NOISE_MODEL_PATH)
 
 mu_R   <- noise_biv$mu[1];  sd_R <- sqrt(noise_biv$Sigma[1, 1])
 mu_P   <- noise_biv$mu[2];  sd_P <- sqrt(noise_biv$Sigma[2, 2])
@@ -94,9 +103,9 @@ df_wide <- df_raw %>%
                    by = c("name", "karyotype")) %>%
   dplyr::filter(!is.na(RNA_lfc), !is.na(Protein_lfc), !is.na(DNA_lfc)) %>%
   dplyr::mutate(
-    CS_RNA     = DNA_lfc - RNA_lfc,
-    CS_Protein = DNA_lfc - Protein_lfc,
-    CS_Buffer  = RNA_lfc - Protein_lfc
+    CS_RNA     = (DNA_lfc - RNA_lfc)     * sign(DNA_lfc),
+    CS_Protein = (DNA_lfc - Protein_lfc) * sign(DNA_lfc),
+    CS_Buffer  = (RNA_lfc - Protein_lfc) * sign(DNA_lfc)   # sign-correct this too
   )
 saveRDS(df_wide, file.path(RES_PATH, "df_wide_three_CS.rds"))
 
@@ -682,8 +691,7 @@ p_frac_direction <- ggplot(frac_by_direction,
   labs(x = "Copy-number change", y = "Fraction compensated",
        fill = "Level")
 
-ggsave(file.path(IMG_PATH, "fraction_compensated_gain_vs_loss.pdf"),
-       p_frac_direction, width = 7, height = 4)
+ggsave(file.path(IMG_PATH, "fraction_compensated_gain_vs_loss.pdf"), p_frac_direction, width = 7, height = 4)
 
 # ===========================================================================
 # 9. 3-bit class distribution per karyotype (joint-gated)
@@ -735,10 +743,10 @@ ggsave(file.path(IMG_PATH, "class_distribution_per_karyotype.pdf"),
 corum_path <- "/orfeo/cephfs/scratch/cdslab/gsantacatterina/organoids_analysis/jovoniR/data/CORUM_gene_list.txt"
 if (file.exists(corum_path)) {
   corum_genes <- read.delim(corum_path) %>% dplyr::pull(GeneSym)
-  
+
   df_classified <- df_classified %>%
     dplyr::mutate(in_complex = name %in% corum_genes)
-  
+
   run_corum_fisher <- function(buffer_col) {
     df_classified %>%
       dplyr::group_by(karyotype) %>%
@@ -751,12 +759,12 @@ if (file.exists(corum_path)) {
       dplyr::mutate(padj = p.adjust(p, method = "BH"),
                     buffer_def = buffer_col)
   }
-  
+
   fisher_buffered <- dplyr::bind_rows(
     run_corum_fisher("comp_Buffer"),
     run_corum_fisher("comp_Buffer_cond")
   )
-  
+
   complex_enrichment <- df_classified %>%
     dplyr::group_by(karyotype, in_complex) %>%
     dplyr::summarise(
@@ -766,10 +774,10 @@ if (file.exists(corum_path)) {
       n = dplyr::n(),
       .groups = "drop"
     )
-  
+
   saveRDS(complex_enrichment, file.path(RES_PATH, "complex_enrichment.rds"))
   saveRDS(fisher_buffered,    file.path(RES_PATH, "complex_fisher_buffered.rds"))
-  
+
   # Plot: marginal vs conditional buffering OR per karyotype
   fisher_plot <- fisher_buffered %>%
     dplyr::mutate(
@@ -781,7 +789,7 @@ if (file.exists(corum_path)) {
       log2_OR       = log2(pmax(OR, 0.1)),
       star          = sig_label(padj)
     )
-  
+
   p_complex_or <- ggplot(fisher_plot,
                          aes(x = karyotype_lab, y = log2_OR, fill = buffer_def)) +
     geom_col(position = position_dodge(width = 0.8), width = 0.7) +
@@ -792,17 +800,17 @@ if (file.exists(corum_path)) {
     labs(x = "Karyotype", y = "log2(OR) for CORUM membership among buffered genes",
          fill = "Buffering definition",
          caption = "Higher OR = complex subunits more enriched in buffered set.")
-  
+
   ggsave(file.path(IMG_PATH, "complex_buffering_marginal_vs_conditional.pdf"),
          p_complex_or, width = 8, height = 4)
-  
+
   # Original-style bar plot using the marginal call (preserved for continuity)
   complex_plot_df <- complex_enrichment %>%
     dplyr::mutate(
       karyotype_lab = karyotype_mapping[karyotype],
       karyotype_lab = factor(karyotype_lab, levels = karyotype_mapping)
     )
-  
+
   pvals_complex <- fisher_buffered %>%
     dplyr::filter(buffer_def == "comp_Buffer") %>%
     dplyr::left_join(
@@ -818,7 +826,7 @@ if (file.exists(corum_path)) {
       annotation = paste0(sig_label(padj),
                           "  OR=", formatC(OR, digits = 2, format = "f"))
     )
-  
+
   p_complex <- ggplot(complex_plot_df,
                       aes(x = karyotype_lab, y = frac_buffered, fill = in_complex)) +
     geom_col(position = position_dodge(width = 0.8), width = 0.7) +
@@ -836,7 +844,7 @@ if (file.exists(corum_path)) {
     labs(x = "Karyotype", y = "Fraction buffered (post-transcriptional)",
          fill = "",
          caption = "Marginal buffer call. Fisher's exact test, BH-adjusted.")
-  
+
   ggsave(file.path(IMG_PATH, "complex_buffering.pdf"), p_complex, width = 7, height = 4)
 }
 
@@ -862,14 +870,14 @@ if (length(genes_by_class) > 1) {
     ont          = "BP",
     pAdjustMethod = "BH"
   )
-  
+
   dir.create(file.path(RES_PATH, "enrichment"),
              recursive = TRUE, showWarnings = FALSE)
   saveRDS(enrich_res, file.path(RES_PATH, "enrichment", "compensation_class_GO.rds"))
-  
+
   p_enrich <- dotplot(enrich_res, showCategory = 8) +
     theme(axis.text.x = element_text(angle = 30, hjust = 1))
-  
+
   ggsave(file.path(IMG_PATH, "GO_by_class.pdf"), p_enrich, width = 10, height = 8)
 }
 
@@ -940,7 +948,7 @@ if (nrow(go_by_ontology) > 0) {
       Description = factor(Description, levels = unique(Description)),
       log_padj    = -log10(p.adjust)
     )
-  
+
   p_go_combined <- ggplot(top_terms,
                           aes(x = log_padj, y = reorder(Description, log_padj),
                               colour = ontology, size = Count)) +
@@ -950,7 +958,7 @@ if (nrow(go_by_ontology) > 0) {
     labs(x = "-log10(adj. p)", y = NULL,
          colour = "Ontology", size = "Gene count",
          title = "GO enrichment: chr 17 buffered genes (vs chr 17 background)")
-  
+
   ggsave(file.path(IMG_PATH, "GO_chr17_buffered_combined.pdf"),
          p_go_combined, width = 11, height = 7)
   saveRDS(p_go_combined, file.path(IMG_PATH, "GO_chr17_buffered_combined.rds"))
@@ -964,7 +972,7 @@ if (file.exists(mitocarta_path)) {
     dplyr::as_tibble() %>%
     dplyr::pull(Symbol) %>%
     unique()
-  
+
   run_mito_fisher <- function(scope_filter, buffer_col, scope_label) {
     df_classified %>%
       dplyr::left_join(gene_chrom, by = "name") %>%
@@ -989,7 +997,7 @@ if (file.exists(mitocarta_path)) {
                     scope = scope_label,
                     buffer_def = buffer_col)
   }
-  
+
   mito_tests <- dplyr::bind_rows(
     run_mito_fisher("chr17",  "comp_Buffer",      "chr 17 — marginal"),
     run_mito_fisher("chr17",  "comp_Buffer_cond", "chr 17 — conditional"),
@@ -997,7 +1005,7 @@ if (file.exists(mitocarta_path)) {
     run_mito_fisher("genome", "comp_Buffer_cond", "Genome-wide — conditional")
   )
   saveRDS(mito_tests, file.path(RES_PATH, "mitocarta_enrichment_all_scopes.rds"))
-  
+
   mito_combined <- mito_tests %>%
     dplyr::mutate(
       karyotype_lab = karyotype_mapping[karyotype],
@@ -1005,7 +1013,7 @@ if (file.exists(mitocarta_path)) {
       log2_OR       = log2(pmax(OR, 0.1)),
       star          = sig_label(padj)
     )
-  
+
   p_mito <- ggplot(mito_combined,
                    aes(x = karyotype_lab, y = log2_OR, fill = scope)) +
     geom_col(position = position_dodge(width = 0.8), width = 0.7) +
@@ -1017,7 +1025,7 @@ if (file.exists(mitocarta_path)) {
     labs(x = "Karyotype",
          y = "log2(OR) MitoCarta enrichment in buffered set",
          fill = "Scope × buffer definition")
-  
+
   ggsave(file.path(IMG_PATH, "mitocarta_buffer_enrichment.pdf"),
          p_mito, width = 9, height = 5)
   saveRDS(p_mito, file.path(IMG_PATH, "mitocarta_buffer_enrichment.rds"))
@@ -1069,7 +1077,7 @@ if (nrow(go_per_chrom) > 0) {
       chr      = factor(chr, levels = chrom_levels),
       log_padj = -log10(p.adjust)
     )
-  
+
   if (nrow(mito_terms) > 0) {
     p_mito_per_chrom <- ggplot(mito_terms,
                                aes(x = chr, y = Description, fill = log_padj)) +
@@ -1081,7 +1089,7 @@ if (nrow(go_per_chrom) > 0) {
       labs(x = "Chromosome", y = NULL,
            title = "Mitochondrial GO CC enrichment among buffered (conditional) genes, per chromosome",
            caption = "Cells labeled with gene count.")
-    
+
     ggsave(file.path(IMG_PATH, "mito_GO_per_chrom.pdf"),
            p_mito_per_chrom, width = 10, height = 5)
     saveRDS(p_mito_per_chrom, file.path(IMG_PATH, "mito_GO_per_chrom.rds"))
@@ -1099,7 +1107,7 @@ mito_chr17_buffered_genes <- unique(unlist(strsplit(
 )))
 
 if (length(mito_chr17_buffered_genes) > 0) {
-  
+
   lfc_illustration <- df_classified %>%
     dplyr::filter(name %in% mito_chr17_buffered_genes) %>%
     dplyr::filter(karyotype %in% c("2:1", "2:2")) %>%
@@ -1111,7 +1119,7 @@ if (length(mito_chr17_buffered_genes) > 0) {
       karyotype_lab = karyotype_mapping[karyotype],
       karyotype_lab = factor(karyotype_lab, levels = karyotype_mapping)
     )
-  
+
   p_lfc_mito <- ggplot(lfc_illustration,
                        aes(x = level, y = lfc, group = name)) +
     geom_hline(yintercept = 0, linetype = "dashed", colour = "grey50") +
@@ -1126,7 +1134,7 @@ if (length(mito_chr17_buffered_genes) > 0) {
     labs(x = NULL, y = "log2 fold-change vs diploid",
          title = "Buffering of chr 17 mitochondrial genes (conditional set)",
          caption = "Each line = one gene. Red = median across genes.")
-  
+
   ggsave(file.path(IMG_PATH, "chr17_mito_LFC_buffering.pdf"),
          p_lfc_mito, width = 8, height = 4)
   saveRDS(p_lfc_mito, file.path(IMG_PATH, "chr17_mito_LFC_buffering.rds"))
