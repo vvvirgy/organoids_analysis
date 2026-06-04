@@ -131,8 +131,7 @@ ell_df <- dplyr::bind_rows(
 
 # Downsample points for visualisation if very large
 plot_pts <- df_matched
-if (nrow(plot_pts) > 20000)
-  plot_pts <- dplyr::slice_sample(plot_pts, n = 20000)
+if (nrow(plot_pts) > 20000) plot_pts <- dplyr::slice_sample(plot_pts, n = 20000)
 
 p_joint <- ggplot(plot_pts, aes(lfc_rna, lfc_prot)) +
   geom_point(alpha = 0.08, size = 0.4) +
@@ -153,3 +152,92 @@ ggsave(file.path(IMG_PATH, "noise_model_joint_ellipses.pdf"),
        p_joint, width = 5.5, height = 5)
 ggsave(file.path(IMG_PATH, "noise_model_joint_ellipses.png"),
        p_joint, width = 5.5, height = 5, dpi = 450)
+
+library(moments)   # skewness, kurtosis, jarque.test
+library(MASS)      # for mvn alternative if needed
+
+# ── Per-marginal normality diagnostics ────────────────────────────────────────
+marginal_diag <- dplyr::tibble(
+  quantity = c("RNA", "Protein", "Buffer"),
+  data     = list(df_matched$lfc_rna, df_matched$lfc_prot, df_matched$lfc_buff)
+) %>%
+  dplyr::mutate(
+    skewness  = purrr::map_dbl(data, moments::skewness),
+    ex_kurt   = purrr::map_dbl(data, moments::kurtosis) - 3,  # excess kurtosis
+    sw_p      = purrr::map_dbl(data, ~ {
+      # Shapiro-Wilk is unreliable for n > 5000; subsample
+      x <- .x
+      if (length(x) > 5000) x <- sample(x, 5000)
+      shapiro.test(x)$p.value
+    }),
+    jb_p      = purrr::map_dbl(data, ~ moments::jarque.test(.x)$p.value)
+  ) %>%
+  dplyr::select(-data)
+
+print(marginal_diag)
+# Rule of thumb: |skewness| > 0.5 is meaningful; excess kurtosis > 1 → heavy tails
+
+# ── Q-Q plots for the three marginals ─────────────────────────────────────────
+qq_df <- dplyr::bind_rows(
+  dplyr::tibble(lfc = df_matched$lfc_rna,  quantity = "RNA"),
+  dplyr::tibble(lfc = df_matched$lfc_prot, quantity = "Protein"),
+  dplyr::tibble(lfc = df_matched$lfc_buff, quantity = "Buffer")
+) %>%
+  dplyr::mutate(quantity = factor(quantity, levels = c("RNA", "Protein", "Buffer"))) %>%
+  dplyr::group_by(quantity) %>%
+  dplyr::mutate(
+    theoretical = qnorm(ppoints(dplyr::n()))[rank(lfc)]
+  ) %>%
+  dplyr::ungroup()
+
+p_qq <- ggplot(qq_df, aes(x = theoretical, y = lfc)) +
+  geom_point(alpha = 0.15, size = 0.4) +
+  geom_abline(slope  = 1, intercept = 0,           # wrong: should use per-group mu/sigma
+              linetype = "dashed", colour = "grey40") +
+  # Better: draw the fitted Gaussian line using per-group mu/sigma
+  geom_abline(
+    data = diploid_noise %>%
+      dplyr::mutate(quantity = sub("CS_", "", quantity),
+                    quantity = factor(quantity, levels = c("RNA", "Protein", "Buffer"))),
+    aes(slope = sigma, intercept = mu),
+    colour = "firebrick3", linewidth = 0.7
+  ) +
+  facet_wrap(~quantity, scales = "free_y") +
+  theme_bw() +
+  labs(x = "Theoretical quantiles (N(0,1))", y = "Sample LFC",
+       subtitle = "Red line = fitted Gaussian. Deviations in tails → non-normality")
+
+ggsave(file.path(IMG_PATH, "noise_model_qqplots.pdf"), p_qq, width = 9, height = 3.5)
+
+
+
+
+library(MASS)
+
+t_fit_rna  <- MASS::fitdistr(df_matched$lfc_rna,  "t")
+t_fit_prot <- MASS::fitdistr(df_matched$lfc_prot, "t")
+
+cat("RNA  — df:", t_fit_rna$estimate["df"],
+    " mu:", t_fit_rna$estimate["m"],
+    " sigma:", t_fit_rna$estimate["s"], "\n")
+cat("Prot — df:", t_fit_prot$estimate["df"],
+    " mu:", t_fit_prot$estimate["m"],
+    " sigma:", t_fit_prot$estimate["s"], "\n")
+
+
+
+# Compare thresholds at your typical alpha levels
+alphas <- c(0.05, 0.025, 0.01, 0.005)
+
+threshold_comparison <- dplyr::tibble(
+  alpha         = alphas,
+  gaussian      = qnorm(1 - alphas),
+  t_RNA         = qt(1 - alphas, df = t_fit_rna$estimate["df"]),
+  t_Protein     = qt(1 - alphas, df = t_fit_prot$estimate["df"])
+) %>%
+  dplyr::mutate(
+    inflation_RNA  = t_RNA  / gaussian - 1,
+    inflation_Prot = t_Protein / gaussian - 1
+  )
+
+print(threshold_comparison)

@@ -79,7 +79,6 @@ df_with_compensation_scores %>%
   ggplot(mapping = aes(x = karyotype, y = lfc, col = omic)) +
   geom_boxplot()
 
-
 df_with_compensation_scores %>%
   ggplot(mapping = aes(x = DNA_lfc, y = lfc)) +
   geom_point() +

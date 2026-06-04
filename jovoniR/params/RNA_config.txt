@@ -1,0 +1,4 @@
+psinorm TRUE
+psinorm FALSE
+normed_sum TRUE
+normed_sum FALSE
